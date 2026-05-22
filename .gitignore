@@ -1,0 +1,7 @@
+.DS_Store
+node_modules/
+*.log
+*.mcpb
+*.zip
+*.tgz
+SHA256SUMS*
