@@ -30,6 +30,8 @@ unzip tool recognises the extension.
 
 ## Documentation
 
+- [**Install guide**](./INSTALL.md) — requirements, step-by-step for CD
+  and CC, plus upgrade and uninstall.
 - [**Tool reference**](./TOOLS.md) — the 9 tools, what each one does, and
   what it costs in Keepa tokens.
 - [**Usage examples**](./USAGE.md) — example prompts to try first.
