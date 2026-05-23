@@ -40,6 +40,8 @@ unzip tool recognises the extension.
 - [**FAQ**](./FAQ.md) — Keepa token economics, beta vs GA, billing,
   privacy, compatibility.
 - [**Changelog**](./CHANGELOG.md) — release notes.
+- [**License**](./LICENSE.md) — proprietary closed-beta terms (free
+  of charge, AS-IS, no warranty, no redistribution).
 
 ## Beta status
 
