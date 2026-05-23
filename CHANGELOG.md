@@ -5,6 +5,25 @@ All notable changes to agellic-mcp are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0-beta.2] — 2026-05-23
+
+### Fixed
+
+- **Claude Code installer now prompts for TPM interactively.** Was
+  silently defaulting to 20 even in interactive mode when no `--tpm`
+  flag, existing config entry, or credential cache supplied a value.
+  INSTALL.md's promise of an interactive TPM prompt now matches
+  behavior. Workaround on beta.1 was passing `--tpm <value>` on the
+  command line.
+- **Claude Code installer writes the credential cache after a
+  successful probe.** Previously the per-machine cache at
+  `~/.agellic-mcp/credentials.json` was only populated by an actual
+  server boot (CD spawn, or a tool call in CC). That meant the "leave
+  fields blank, cache fills in" UX in Claude Desktop only worked when
+  CD was installed first. The installer now writes the cache directly
+  after the probe validates credentials, so CC-first → CD-second picks
+  up credentials from cache too.
+
 ## [0.5.0-beta.1] — 2026-05-22
 
 ### Added
