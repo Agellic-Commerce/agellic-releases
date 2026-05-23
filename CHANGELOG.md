@@ -5,6 +5,20 @@ All notable changes to agellic-mcp are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0-beta.3] — 2026-05-23
+
+### Fixed
+
+- **Claude Code installer's credential-cache write step decoded the
+  license token as a 3-part JWT.** Agellic licenses are a 2-part
+  `<base64url-payload>.<base64url-signature>` envelope (ed25519, not
+  JWT — see `src/license/verify.ts`). The decode in beta.2 rejected
+  every real license with `malformed license token (expected 3 JWT
+  parts)` and skipped the cache write, defeating the headline fix
+  from beta.2 (the CC-first → CD-second credential handoff). The
+  decode now matches the real format and includes a whitespace-strip
+  pass for parity with the server's verifier.
+
 ## [0.5.0-beta.2] — 2026-05-23
 
 ### Fixed
