@@ -404,7 +404,10 @@ Per resolved ASIN:
 - **`supply`** — Amazon OOS 30/90/180d, marketplace OOS 90d.
 - **`insights`** — rank volatility, trend signals, Buy Box volatility,
   effective competition (sellers within 5% of BB), IP risk,
-  race-to-bottom warning.
+  race-to-bottom warning. See
+  [`COMPUTED-INSIGHTS.md`](COMPUTED-INSIGHTS.md) for the algorithms
+  behind every field in `demand`, `seasonality`, and `insights` — what
+  each measures, the constants, and how to read it.
 - **`economics`** — referral fee percent, FBA pick & pack fee, return
   rate.
 - **`metadata`** — listing age, Subscribe & Save eligibility.
