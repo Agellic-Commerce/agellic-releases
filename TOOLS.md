@@ -44,6 +44,14 @@ Discovery search across Amazon's catalog. Returns ASINs matching
 category / brand / price / rank / competition filters, plus optional
 market-insights stats when you ask for them.
 
+**You speak in natural language.** Describe what you're after ("kitchen
+items under $40, rating ≥ 4.2, 2–5 sellers, BSR < 10K") and the
+assistant picks the Keepa filter names, scales (cents not dollars, mm
+not inches), and time windows for you. The filter reference below is
+what the LLM consults to pick names and units — not a syntax you type
+yourself. The "Natural-language to filter mappings" subsection at the
+end of the section shows sample translations.
+
 ### What it's good for
 
 - The user has no ASINs yet and wants to find products matching criteria.
@@ -127,6 +135,36 @@ Competition and seller field routing:
   90).
 - Seller-count delta: `delta = avg − current`. `delta30_COUNT_NEW_gte: 3`
   means 3 sellers LEFT (avg was higher than current).
+
+### The full filter surface
+
+The fields above are a sampler. The strict validator accepts over a
+thousand named filters, generated from a handful of patterns crossed
+with Keepa's price types and time windows:
+
+- `current_<TYPE>_{gte,lte}` — current value
+- `avg{7,30,90,180,365}_<TYPE>_{gte,lte}` — windowed averages
+- `delta{1,7,30,90,Last}_<TYPE>_{gte,lte}` — absolute delta vs that
+  window's avg (or previous value for `deltaLast`)
+- `deltaPercent{1,7,30,90}_<TYPE>_{gte,lte}` — percent delta
+- `backInStock_<TYPE>` — was OOS in last 60d, now has an offer
+- `isLowest_<TYPE>` / `isLowest90_<TYPE>` — current is the all-time / 90d low
+- `lastPriceChange_<TYPE>_{gte,lte}` — timestamp filter (Keepa minutes)
+
+`<TYPE>` covers the 24 base Keepa types (AMAZON, NEW, USED,
+BUY_BOX_SHIPPING, NEW_FBA, NEW_FBM_SHIPPING, COUNT_NEW, COUNT_USED,
+COUNT_REVIEWS, RATING, SALES, LISTPRICE, COLLECTIBLE, REFURBISHED,
+WAREHOUSE, LIGHTNING_DEAL, TRADE_IN, …); `avg`, `deltaPercent`,
+`isLowest`, and `lastPriceChange` also accept 5 extras
+(EBAY_NEW_SHIPPING, EBAY_USED_SHIPPING, PRIME_EXCL, RENT,
+BUY_BOX_USED_SHIPPING).
+
+Anything that doesn't fit a top-level pattern goes in `advancedFilters:
+{ ... }` — a passthrough map of `Keepa-field → value`. The strict layer
+validates either way: bad names come back as actionable errors, not
+silent drops, so the working posture is **try the filter and adapt from
+the response** rather than refuse because a field isn't named in the
+section above.
 
 ### What it returns
 
