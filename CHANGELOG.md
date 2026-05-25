@@ -39,6 +39,14 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   cache, or enter a value to set it explicitly.
 - **Corrected 5 mislabeled `screen_products` column descriptions** (the
   Core-10 column labels) in TOOLS.md.
+- **The server now reports its real version.** Its internal version string
+  was a hand-maintained literal that had never been bumped past
+  `0.5.0-beta.1`, so the startup log and the version handed to Claude
+  Desktop / Claude Code identified the server as `beta.1`. It is now derived
+  from the package version at build time and can no longer drift. No change
+  to behavior — this only corrects the version shown in logs and used for
+  support diagnostics. (The `beta.4` download was re-cut to include this fix;
+  re-download if you installed before 2026-05-25.)
 
 ## [0.5.0-beta.3] — 2026-05-23
 
