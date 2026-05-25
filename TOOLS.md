@@ -285,13 +285,13 @@ ASIN|BSR|Sold|BB(c)|Trend|Sellers|Amz|FBA(c)|Ref%|Drops30|OOS90|Brand
 | BSR     | Current Best Sellers Rank (primary category)         |
 | Sold    | Estimated monthly sales                              |
 | BB(c)   | Buy Box price in cents                               |
-| Trend   | Short-term rank trend signal                         |
-| Sellers | Third-party seller count                             |
+| Trend   | Buy Box price trend (30d vs 90d avg)                 |
+| Sellers | New offer count (incl. Amazon + brand)               |
 | Amz     | Whether Amazon itself sells the product              |
-| FBA(c)  | Lowest FBA offer price in cents                      |
+| FBA(c)  | FBA pick-and-pack (fulfillment) fee in cents         |
 | Ref%    | Referral fee percentage                              |
-| Drops30 | Price-drop events in the last 30 days                |
-| OOS90   | Out-of-stock percentage over the last 90 days        |
+| Drops30 | Sales-rank drops in last 30 days (sales proxy)       |
+| OOS90   | Amazon out-of-stock percentage over the last 90 days |
 | Brand   | Brand name (identifier)                              |
 
 Values are plain numbers. Nulls render as dashes. A summary line at the
