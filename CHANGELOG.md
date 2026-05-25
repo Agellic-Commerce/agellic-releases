@@ -5,7 +5,7 @@ All notable changes to agellic-mcp are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.5.0-beta.4] — 2026-05-25
 
 ### Added
 
@@ -26,6 +26,19 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - **Refreshed the bundled exchange-rate defaults to 2026-05-22 ECB rates**
   (were 2026-04-09) — the zero-config fallback used when no
   `exchange-rates.json` override is present.
+
+### Fixed
+
+- **Claude Desktop now inherits the per-machine Keepa tokens-per-minute
+  instead of silently defaulting to 20.** The `.mcpb` manifest gave the
+  tokens-per-minute field a `default: 20`, so Claude Desktop always injected
+  `20` even when the field was left blank — overriding the per-machine value
+  configured elsewhere (e.g. `60` from Claude Code) and throttling CD-only
+  users on higher Keepa tiers to the 20-tier rate. The field now matches the
+  license/key fields: leave it blank to inherit from the shared credential
+  cache, or enter a value to set it explicitly.
+- **Corrected 5 mislabeled `screen_products` column descriptions** (the
+  Core-10 column labels) in TOOLS.md.
 
 ## [0.5.0-beta.3] — 2026-05-23
 
