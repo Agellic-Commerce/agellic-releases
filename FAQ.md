@@ -120,3 +120,32 @@ the chart inline as expected.
 
 In the meantime, switch to a regular chat thread when you need chart
 visuals.
+
+## Exchange rates
+
+### How current are the rates in `resolve_cross_border`?
+
+The tool converts prices between marketplaces using an exchange-rate
+table baked into the build; each cross-border result reports that table's
+date as `summary.exchangeRateDate`. The rates are approximate — fine for
+the ballpark price-gap analysis the tool does, but they drift a few
+percent over weeks. Every release ships with refreshed bundled defaults.
+
+### Can I update the exchange rates myself?
+
+**Claude Code** — yes, any time:
+
+```bash
+node install.mjs --refresh-rates
+```
+
+This fetches current ECB reference rates (via Frankfurter) and writes
+`~/.agellic-mcp/exchange-rates.json`, which the server uses in preference
+to the bundled table. Restart your Claude session afterward. It doesn't
+reinstall anything — just the rate file.
+
+**Claude Desktop only** — the `.mcpb` install has no terminal step, so
+CD-only users can't run `--refresh-rates`. You get fresher rates by
+upgrading to a newer release (refreshed bundled defaults), or by also
+installing the Claude Code build on the same machine — the rate file
+lives in the shared `~/.agellic-mcp/`, so one refresh covers both hosts.

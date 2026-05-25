@@ -5,6 +5,28 @@ All notable changes to agellic-mcp are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **On-demand FX rate refresh for `resolve_cross_border`.** New installer
+  mode `node install.mjs --refresh-rates` (Claude Code only) fetches
+  current ECB reference rates from Frankfurter and writes a per-machine
+  override at `~/.agellic-mcp/exchange-rates.json`. The server resolves
+  rates **cache-over-bundled**: the override wins when present and valid;
+  a missing / corrupt / partial cache falls back to the baked-in defaults
+  silently. `summary.exchangeRateDate` reflects whichever source is live.
+  The override is shared via `~/.agellic-mcp/`, so a Claude Code refresh
+  also applies to Claude Desktop on the same machine. Claude Desktop-only
+  installs have no terminal step and stay on the bundled defaults until
+  the next release.
+
+### Changed
+
+- **Refreshed the bundled exchange-rate defaults to 2026-05-22 ECB rates**
+  (were 2026-04-09) — the zero-config fallback used when no
+  `exchange-rates.json` override is present.
+
 ## [0.5.0-beta.3] — 2026-05-23
 
 ### Fixed

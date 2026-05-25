@@ -511,7 +511,13 @@ object carries:
 - `avgGapPercent` — average % gap across priced matches (null if none
   priced)
 - `sourceDomain` / `targetDomain` — human-readable marketplace labels
-- `exchangeRate` / `exchangeRateDate`
+- `exchangeRate` / `exchangeRateDate` — the conversion rate applied and
+  the date of the rate table in effect. Rates are bundled defaults
+  (approximate, for ballpark comparison); Claude Code users can refresh
+  them on demand with `node install.mjs --refresh-rates`, which writes a
+  shared `~/.agellic-mcp/exchange-rates.json` override. CD-only installs
+  stay on the bundled defaults until the next release. See
+  [INSTALL.md](./INSTALL.md#refreshing-exchange-rates).
 
 **`matches`** (array, sorted by `gapPercent` descending)
 - `sourceAsin` / `targetAsin`, `sourceTitle` / `targetTitle`

@@ -161,6 +161,46 @@ half-installed.
 
 ---
 
+## Refreshing exchange rates
+
+`resolve_cross_border` converts target-marketplace prices into the
+source currency using a rate table baked into the build — its date is
+reported as `summary.exchangeRateDate` in every cross-border result.
+The bundled defaults are fine for the ballpark gap analysis the tool
+does, but they drift a few percent over weeks.
+
+### Claude Code — refresh on demand
+
+```bash
+node install.mjs --refresh-rates
+```
+
+Fetches current ECB reference rates (via Frankfurter — no API key) and
+writes `~/.agellic-mcp/exchange-rates.json`, which the server uses **in
+preference to the bundled table**. A missing or invalid file falls back
+to the bundled defaults silently, and a failed fetch (network down,
+partial data) leaves any existing file untouched — never a partial
+write. This doesn't reinstall or upgrade anything; it only writes the
+rate file. Restart your Claude session to pick up the new rates.
+
+Because `~/.agellic-mcp/` is shared between hosts, a refresh run from
+Claude Code also applies to Claude Desktop on the same machine.
+
+### Claude Desktop — limitation
+
+The `.mcpb` install has no terminal step, so **Claude Desktop-only users
+can't run `--refresh-rates`.** You get fresher rates by either:
+
+- **upgrading to a newer release** — each `.mcpb` ships refreshed bundled
+  defaults; or
+- **also installing the Claude Code build on the same machine** and
+  running `--refresh-rates` once — CD then reads the shared override.
+
+A pure-CD install otherwise stays on the bundled defaults, which is fine
+for the ballpark comparison `resolve_cross_border` is designed for.
+
+---
+
 ## Uninstall
 
 ### Claude Desktop
@@ -206,6 +246,7 @@ you understand the consequences).
 |---|---|
 | `~/.claude.json` | `mcpServers.agellic` entry (Claude Code only) — license + Keepa key + TPM in the env block, mode 0600 |
 | `~/.agellic-mcp/credentials.json` | Shared per-machine credential cache (mode 0600). Both hosts read; written after every successful server boot AND after every successful installer probe |
+| `~/.agellic-mcp/exchange-rates.json` | Optional FX-rate override for `resolve_cross_border`, written by `--refresh-rates` (Claude Code). Shared between hosts; absent = bundled defaults. Mode 0644 (rates aren't secret) |
 | Canonical bin path | `server.js` + dependencies + `version.json` (Claude Code only) |
 | CD extension dir | Same server tree, managed by Claude Desktop (Claude Desktop only) |
 | `~/.agellic-mcp/` | Shared data dir: credential cache, cached products, result sets, token bucket state, job queue, logs |
