@@ -37,8 +37,11 @@ credential fields blank and pick everything up from the cache. See
 
 1. Download `agellic-mcp.mcpb` from the
    [latest release](https://github.com/Agellic-Commerce/agellic-releases/releases/latest).
-2. Open Claude Desktop → **Settings** → **Extensions** → drag the
-   `.mcpb` file into the drop target.
+2. Open Claude Desktop → **Settings** → **Extensions**, then install the
+   `.mcpb` one of two ways:
+   - **Drag and drop** the `.mcpb` file into the drop target; or
+   - If your build doesn't show a drop target, click **Advanced settings**
+     → **Install extension…** and select the downloaded `.mcpb`.
 3. Paste your **Agellic license key** and **Keepa API key** into the
    credential form. Set **Tokens per minute** to match your Keepa
    subscription tier (default `20` is calibrated to Keepa's minimum
@@ -140,9 +143,10 @@ The directory contains `server.js` + its runtime dependencies +
 
 ### Claude Desktop
 
-Drag the new `agellic-mcp.mcpb` into Settings → Extensions. CD prompts
-for credentials again on the first launch after upgrade — paste them,
-or leave blank to pick up from the credential cache.
+Drag the new `agellic-mcp.mcpb` into Settings → Extensions (or
+**Advanced settings → Install extension…** if there's no drop target).
+CD prompts for credentials again on the first launch after upgrade —
+paste them, or leave blank to pick up from the credential cache.
 
 ### Claude Code
 
