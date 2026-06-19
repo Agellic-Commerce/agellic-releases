@@ -47,7 +47,7 @@ credential fields blank and pick everything up from the cache. See
    subscription tier (default `20` is calibrated to Keepa's minimum
    paid tier; raise it for higher tiers).
 4. Claude Desktop installs the extension and auto-restarts it. After
-   ~2-5 seconds the 9 Agellic tools appear in the tool list.
+   ~2-5 seconds the 11 Agellic tools appear in the tool list.
 
 The `.mcpb` file location doesn't matter — CD reads the file wherever
 you drag from and copies the contents into its own extension directory
@@ -119,7 +119,7 @@ The installer:
 - Merges an `mcpServers.agellic` entry into `~/.claude.json`.
 
 Restart Claude Code (`/restart` or quit the process) to pick up the
-new MCP server. The 9 Agellic tools appear in the next session.
+new MCP server. The 11 Agellic tools appear in the next session.
 
 If you already configured agellic in Claude Desktop on this machine,
 run `node install.mjs --non-interactive` — the installer reads
@@ -241,6 +241,32 @@ is still installed** — the data dir is shared between hosts, and
 purging while CD is active would corrupt CD's runtime state.
 Uninstall CD first, or pass `--force` to override (only do this if
 you understand the consequences).
+
+### Uninstall gotchas
+
+**Lost your `install.mjs`?** The uninstaller ships only inside the
+release archive — there's no separate download. If you deleted the
+unzipped `agellic-install/` folder, you have nothing to run
+`--uninstall` with. Either re-download `agellic-mcp.zip` from the
+[latest release](https://github.com/Agellic-Commerce/agellic-releases/releases/latest),
+unzip it, and run `node install.mjs --uninstall` (add `--remove-bin` or
+`--purge`) from there — or remove agellic by hand:
+
+1. Delete the `mcpServers.agellic` entry from `~/.claude.json`.
+2. Delete the canonical bin directory — macOS
+   `~/Library/Application Support/Agellic/`, Windows `%LOCALAPPDATA%\Agellic\`
+   (see [Canonical bin paths](#canonical-bin-paths)).
+3. Optionally `rm -rf ~/.agellic-mcp` to remove the shared data dir
+   (see [Where files live](#where-files-live)).
+
+**Quit Claude Desktop and Claude Code before `--purge`.** The purge
+deletes `~/.agellic-mcp/`, but a server process that's still running
+recreates `~/.agellic-mcp/jobs/…` on its next job-queue tick — so the
+data dir can reappear seconds after the purge reports success. On macOS
+a Claude Desktop extension can keep running from memory even after you
+remove it in Settings, so quit Claude Desktop fully (not just close the
+window). If you already purged and `~/.agellic-mcp/` came back, quit
+both hosts and `rm -rf ~/.agellic-mcp` once more.
 
 ---
 
