@@ -11,7 +11,7 @@ For example prompts once installed, see [USAGE.md](./USAGE.md).
 ## Requirements
 
 - **Agellic license token** — delivered in the email you received when
-  you joined the closed beta. Starts with `eyJ…`.
+  you joined the early-access program. Starts with `eyJ…`.
 - **A Keepa API key** — get one at
   [keepa.com/#!api](https://keepa.com/#!api).
 - **Node.js 22.22.2+ (LTS) or 24.15.0+** (Claude Code only — Claude
@@ -68,7 +68,7 @@ server boots in **configuration-pending mode**:
 - Paste credentials into the form and click **Save**. Claude Desktop
   restarts the extension automatically.
 - After ~2-5 seconds, the placeholder is replaced with the full
-  9-tool set.
+  11-tool set.
 
 You should **not** see a red "could not find a valid license" banner
 on a brand-new install. If you do, see

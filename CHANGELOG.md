@@ -5,6 +5,40 @@ All notable changes to agellic-mcp are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0] — 2026-06-19
+
+First stable release. Graduates the `0.5.0-beta.*` series — the beta
+designation is dropped from the version, docs, and license (the
+distribution model is unchanged: a free, invited, revocable license).
+Highlights since `0.5.0-beta.4`:
+
+### Added
+
+- **Two new tools — `resolve_codes` and `get_codes_result`** — bulk
+  resolve UPC / EAN / GTIN codes to candidate ASINs from a supplier
+  manifest (up to 500 rows), with a cached per-row candidate table you
+  page through. The tool surface grows from **9 to 11**.
+- **Inline Keepa charts in Claude Desktop chat and Claude Code.**
+  `get_product_chart` now renders the price/BSR chart inline, and the
+  model receives the same image so it can analyse the chart and answer
+  follow-ups. (Cowork still shows text + URL only — see TROUBLESHOOTING.)
+- **Cost receipts + category echo** on `execute_keepa_finder` and the
+  cross-border tools — each result reports the Keepa tokens it consumed.
+- **`screen_products` Title + Brand columns** in the screen output.
+
+### Changed
+
+- **Demand model recalibrated** — a reported demand badge is treated as
+  truth, a new engine replaces the older heuristic, and cross-marketplace
+  fallbacks demote to a no-read rather than guessing.
+- **`get_product_details` output ~50% smaller** with no loss of signal.
+
+### Fixed
+
+- Keepa token over-refund (a billing-accuracy bug), job-queue durability,
+  and a broad correctness + hardening pass across demand, insights, and
+  analytics.
+
 ## [0.5.0-beta.4] — 2026-05-25
 
 ### Added

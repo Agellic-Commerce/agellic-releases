@@ -32,21 +32,22 @@ unzip tool recognises the extension.
 
 - [**Install guide**](./INSTALL.md) — requirements, step-by-step for CD
   and CC, plus upgrade and uninstall.
-- [**Tool reference**](./TOOLS.md) — the 9 tools, what each one does, and
+- [**Tool reference**](./TOOLS.md) — the 11 tools, what each one does, and
   what it costs in Keepa tokens.
 - [**Usage examples**](./USAGE.md) — example prompts to try first.
 - [**Troubleshooting**](./TROUBLESHOOTING.md) — first-install behavior,
   log locations, common errors.
-- [**FAQ**](./FAQ.md) — Keepa token economics, beta vs GA, billing,
+- [**FAQ**](./FAQ.md) — Keepa token economics, release status, billing,
   privacy, compatibility.
 - [**Changelog**](./CHANGELOG.md) — release notes.
-- [**License**](./LICENSE.md) — proprietary closed-beta terms (free
+- [**License**](./LICENSE.md) — proprietary early-access terms (free
   of charge, AS-IS, no warranty, no redistribution).
 
-## Beta status
+## Release status
 
-We're in **closed beta**. Today's artifacts are unsigned builds for
-cohort testers. The trust stack — Sigstore / cosign supply-chain
-attestation, signed checksums, and an SBOM — is on the roadmap for GA.
-Until then, install only from `Agellic-Commerce/agellic-releases` and
-verify file sizes against the release page before running.
+This is the **v1.0.0 early-access release**, distributed to invited
+testers on a free, revocable license. Today's artifacts are unsigned
+builds; the trust stack — Sigstore / cosign supply-chain attestation,
+signed checksums, and an SBOM — is on the roadmap. Until then, install
+only from `Agellic-Commerce/agellic-releases` and verify file sizes
+against the release page before running.

@@ -1,7 +1,7 @@
 # Tool Reference
 
-This document is the practitioner reference for the 9 MCP tools exposed by
-agellic-mcp v0.5.0-beta.3. Each section covers what the tool does, what
+This document is the practitioner reference for the 11 MCP tools exposed by
+agellic-mcp v1.0.0. Each section covers what the tool does, what
 it costs in Keepa tokens, what inputs it accepts, what it returns, and the
 operating rules worth knowing before you turn it loose on a candidate set.
 All Keepa token costs are concrete numbers measured against current
@@ -22,16 +22,18 @@ becomes the binding constraint for sync vs background-job behavior.
 | `screen_products` | Bulk-screen up to 500 ASINs into a pipe-delimited Core-10 signals table (BSR, sellers, Buy Box, OOS, etc.). | 3 per uncached ASIN |
 | `get_product_details` | Deep per-product analysis: offers, Buy Box rotation, stock depth, calibrated demand, insights. Also resolves UPC/EAN/ISBN → ASIN. | ~8 per uncached ASIN (code lookup: 1 per candidate up to `codeLimit`) |
 | `resolve_cross_border` | Map source ASINs from one marketplace to equivalents on another via product codes; returns price gaps. | Up to 12 per source ASIN (3 source + 9 target) |
+| `resolve_codes` | Bulk-resolve supplier UPC/EAN/GTIN/ISBN codes (up to 500 rows) to candidate ASINs at the identity tier. | ~1 per returned candidate (≈1/code typical) |
 | `get_product_chart` | Fetch a price/BSR history PNG chart for one ASIN on one marketplace. | 1 flat per call (Keepa 90-min server cache) |
 | `check_token_balance` | Show current Keepa token balance, refill rate, and cache-aware per-tool cost projections. | 0 (local) |
 | `check_job_status` | Check or list background jobs created when a call hit a Keepa rate-limit wait. | 0 (local) |
 | `get_finder_result` | Page through ASINs from a stored finder result set by id. | 0 (local) |
 | `get_cross_border_result` | Retrieve a cached cross-border analysis by id, or list recent ones. | 0 (local) |
+| `get_codes_result` | Page through a stored code-resolution result set (the per-row candidate table). | 0 (local) |
 
-The 4 free tools (`check_token_balance`, `check_job_status`,
-`get_finder_result`, `get_cross_border_result`) read local state only
-and never charge Keepa tokens. Cached re-reads of the paid tools are
-also free for 24 hours.
+The 5 free tools (`check_token_balance`, `check_job_status`,
+`get_finder_result`, `get_cross_border_result`, `get_codes_result`) read
+local state only and never charge Keepa tokens. Cached re-reads of the
+paid tools are also free for 24 hours.
 
 Domain values referenced throughout: `1`=US, `2`=UK, `3`=DE, `4`=FR,
 `5`=JP, `6`=CA, `8`=IT, `9`=ES, `10`=IN, `11`=MX, `12`=BR.
@@ -561,11 +563,77 @@ with `get_cross_border_result`.
 
 ---
 
+## `resolve_codes`
+
+Bulk UPC/EAN/GTIN/ISBN-13 → candidate-ASIN resolution for supplier
+manifests (wholesale price lists, arbitrage CSVs). Accepts up to 500 rows
+per call, batches the codes to Keepa, and attributes every returned
+product back to your codes by scanning each product's full code list with
+GTIN-14 normalization (the UPC-12 and EAN-13 forms of one item collide
+correctly).
+
+### What it's good for
+
+- You have a supplier manifest (codes, maybe titles / brands / pack sizes)
+  and need the candidate Amazon ASINs for each line.
+- Identity only — no buy-box, offers, stock, or rating data. Feed the
+  chosen ASINs into `screen_products` / `get_product_details` for that.
+
+### Token cost
+
+- **~1 Keepa token per returned candidate** (typically ≈1 per code, since
+  most codes match a single ASIN). `codeLimit` (default 3, max 20) caps
+  candidates per code.
+- Codes not in Keepa's database cost ~nothing. Worst case
+  (`uniqueCodes × codeLimit`) is reserved up front and the unspent
+  remainder refunded.
+
+### Inputs
+
+- **`rows`** — up to 500 manifest rows. Each row is a `code` plus optional
+  `supplierTitle` / `supplierBrand` / `cost` / `qty` / `packSize`. Pass
+  them when you have them — supplier title vs candidate title is the
+  strongest disambiguator.
+- **`domain`** — the marketplace to resolve on.
+- **`codeLimit`** — candidates per code (default 3, max 20).
+- **`excludeBrands`** — hard filter; candidates whose brand matches
+  (case-insensitive) are dropped before storage.
+
+### What it returns
+
+A **compact summary only**: counts (`rows / resolved / multiCandidate /
+notFound / invalid / unattributed`), tokens used, a `codes:` resultSetId,
+the notFound code list, and per-row validation errors. **The per-row
+candidate table is NOT returned here** — it is cached (24 h) and read via
+`get_codes_result`. `multiCandidate` is your action signal: those rows
+need disambiguation; single-candidate rows are done.
+
+### Disambiguation — the tool states facts, you judge
+
+It never auto-picks a winner. Each cached row carries the echoed supplier
+inputs plus mechanical **matchSignals** (`candidateCount`,
+`primaryCodeMatch`, `qtyMatch`, `brandMatch`) and per-candidate identity
+fields (title, brand, full product codes, packageQuantity, BSR, lowest-new
+price, `ambiguityFlags`). Compare and choose yourself.
+
+### Notes
+
+- Lenient validation (8–14 digits, formatting stripped). Placeholder /
+  junk codes (≥10 identical consecutive digits) are rejected before spend.
+- The resultSetId holds the **union of all candidates across rows** — for
+  large manifests, disambiguate first and pass the chosen subset
+  downstream, not the raw union (it can exceed a 500-ASIN cap).
+- Rate-limited calls queue a `codes` background job — poll
+  `check_job_status`; the completion message carries the resultSetId.
+
+---
+
 ## `get_product_chart`
 
 Fetches a PNG chart image from Keepa's `/graphimage` endpoint for a
-single ASIN on a single marketplace domain. Renders inline in clients
-that support image content (Claude Desktop's regular chat surface does).
+single ASIN on a single marketplace domain. Renders inline in Claude
+Desktop's regular chat and in Claude Code, and the model receives the
+same image so it can analyse the chart and answer follow-up questions.
 
 ### What it's good for
 
@@ -615,28 +683,29 @@ nothing.
 
 ### What it returns
 
-Three rendering surfaces, all emitted on every successful call:
+Every successful call returns the same two-part base:
 
 1. **TextContent** — metadata line: ASIN, domain, range, dimensions,
-   curves enabled, and a token-cost note.
-2. **ImageContent** — base64-encoded PNG (default 800 × 400). Universal
-   fallback rendering path for hosts that surface MCP image content.
-3. **structuredContent** — `{ chartResourceUri, asin, domain, rangeDays,
-   curves }`. MCP Apps hosts (Claude Desktop's iframe surface) read
-   `chartResourceUri` and fetch the PNG via `resources/read` — keeps
-   base64 out of chat content. Hosts without iframe support fall through
-   to the ImageContent block.
+   curves enabled, a Keepa product URL (browser fallback), and a
+   token-cost note.
+2. **ImageContent** — base64-encoded PNG (default 800 × 400). This is the
+   channel the model sees (so it can analyse the chart), and it renders
+   inline in Claude Code and Claude Desktop chat.
+
+On Claude Desktop's regular chat, the server additionally mounts an MCP
+Apps iframe to present the chart visually; every other surface uses the
+image block above.
 
 ### Critical notes
 
-- **Cowork limitation.** Cowork (Claude Desktop's agent-mode surface)
-  strips `type:'image'` content blocks downstream of the MCP server
-  before the LLM sees the result, so charts come up text-only in
-  Cowork. The metadata line and `structuredContent` still reach the
-  model, so it can name the ASIN, domain, and range — just no image
-  bytes. This is a Cowork-side issue, not an agellic-mcp bug. **Claude
-  Desktop's regular chat surface renders charts normally** via the
-  iframe path.
+- **Cowork limitation.** In Cowork (Claude Desktop's agent-mode surface)
+  the chart can't be displayed: the sandboxed VM doesn't paint inline
+  image content blocks and blocks reads of host-saved files. The model
+  still receives the chart image for analysis, and the Keepa product URL
+  in the text is the user-facing fallback — pair it with a
+  `get_product_details` readout for the richest Cowork answer. This is a
+  Cowork-side sandbox constraint, not an agellic-mcp bug. **Claude
+  Desktop's regular chat and Claude Code render the chart inline.**
 - **Non-PNG responses are rejected.** If Keepa returns an HTML error
   page with a 200 status, the tool surfaces `KEEPA_ERROR` instead of
   treating the bytes as an image.
@@ -699,9 +768,10 @@ Three call modes:
 | `screen_products` | 3 per uncached ASIN |
 | `get_product_details` (ASIN / resultSetId modes) | ~8 per uncached ASIN (9 reserved, graph delta refunded) |
 | `resolve_cross_border` | up to 12 per source ASIN (3 source + 9 target, CODE_LIMIT=3) |
+| `resolve_codes` | ~1 per returned candidate, up to `codeLimit` (default 3, max 20) |
 | `get_product_details` code lookup | 1 per returned candidate, up to `codeLimit` (default 3) |
 | `get_product_chart` | 1 flat (cached by Keepa 90 min) |
-| `get_finder_result`, `get_cross_border_result`, `check_job_status`, `check_token_balance` | free (local reads) |
+| `get_finder_result`, `get_cross_border_result`, `get_codes_result`, `check_job_status`, `check_token_balance` | free (local reads) |
 
 ### Timing expectations
 
@@ -892,3 +962,58 @@ xb_a1b2c3: CA → US: 80/81 matched, avg gap +8.1% (best: B0BESTSRC1 → B0BESTT
 - **Id is opaque.** The `xb_` id is a random token — cannot be guessed.
   Always obtain it from a prior `resolve_cross_border` response or via
   `action='list'`.
+
+---
+
+## `get_codes_result`
+
+The sole reader of cached `resolve_codes` resolutions. `resolve_codes`
+returns only a summary; the per-row candidate table lives here — fetch
+exactly the rows you need instead of receiving the whole table.
+
+### What it's good for
+
+- After `resolve_codes`, pull the rows that need disambiguation
+  (`multiCandidateOnly: true` — the canonical move; single-candidate rows
+  are already resolved).
+- Fetch specific rows by supplier code, or page through the full set.
+- Discover cached resolutions (`action: 'list'`).
+
+### Token cost
+
+**0 Keepa tokens.** Local cache read. Resolutions expire after 24 h —
+re-run `resolve_codes` to regenerate.
+
+### Actions
+
+- **`get`** (default) — page through one resolution's rows. Requires `id`
+  (`codes:...`).
+- **`list`** — enumerate cached resolutions for this install, newest
+  first, with summary counts. No id required.
+
+### Inputs (get)
+
+- **`id`** — the `codes:` id from `resolve_codes`.
+- **`multiCandidateOnly: true`** — return only rows with >1 candidate.
+- **`codes: [...]`** — fetch specific rows by supplier code (formatting
+  and zero-pad variants are tolerated).
+- **`offset` / `limit`** — row pagination over the filtered view (default
+  50 rows/page).
+
+### What it returns
+
+Each row renders as a header line — the supplier code, the mechanical
+matchSignals, the echoed supplier inputs, and an `excludedByBrand` count
+when the filter dropped candidates — followed by a pipe table of
+candidates: ASIN, title, brand, packageQuantity, items, part, model, BSR,
+lowest-new price (cents), ambiguity flags (`variation` / `multipack` /
+`inactive_listing`), and the primary-code match. Zero-candidate rows
+render `(no candidates)`.
+
+### Notes
+
+- The price column is the current lowest-new price in cents — identity
+  tier, so no buy-box data exists in this table by design.
+- Compare the supplier title / brand / pack size in the header against
+  each candidate and pick the ASIN yourself; the tool never auto-picks.
+  Wildly heterogeneous candidates on one row signal a junk supplier code.

@@ -5,8 +5,8 @@
 a corporation registered in the Province of Alberta, Canada. All
 rights reserved.
 
-This is a **closed-beta release** distributed free of charge to
-invited cohort testers. The terms below replace any open-source
+This is an **early-access (limited) release** distributed free of
+charge to invited testers. The terms below replace any open-source
 license you may expect to find here — `agellic-mcp` is not open
 source.
 
@@ -46,9 +46,9 @@ time, or that its outputs — including calibrated demand estimates,
 price gaps, cross-border matches, Buy Box rotations, or any other
 data the Software produces — are accurate, complete, or current.
 
-**This is beta software.** Things will change, break, or be withdrawn
-without notice. Verify any output independently before relying on it
-for sourcing decisions, financial decisions, or anything else with
+**This is early-access software.** Features may change, break, or be
+withdrawn without notice. Verify any output independently before relying
+on it for sourcing decisions, financial decisions, or anything else with
 real consequences.
 
 ## 4. Limitation of liability
@@ -88,8 +88,8 @@ Keepa. See [FAQ.md](./FAQ.md#privacy) for the detailed model.
 ## 7. Termination
 
 This license terminates automatically if you breach any of the terms
-above. We may revoke your license token at any time during the closed
-beta at our sole discretion. On termination, you must stop using the
+above. We may revoke your license token at any time during the
+early-access period at our sole discretion. On termination, you must stop using the
 Software and uninstall it via the
 [INSTALL.md → Uninstall](./INSTALL.md#uninstall) instructions.
 
@@ -97,10 +97,10 @@ You may stop using the Software at any time, with or without reason.
 
 ## 8. Changes to these terms
 
-We may update these terms during the closed beta. The version
+We may update these terms during the early-access period. The version
 published in this repository at any given time is the version in
-effect. Material changes will be communicated to active cohort
-testers directly.
+effect. Material changes will be communicated to active testers
+directly.
 
 ## 9. Governing law
 
@@ -113,7 +113,7 @@ terms.
 ---
 
 **Plain-English summary** (the binding text is above; this summary is
-for orientation only): you got free beta access; don't share the
+for orientation only): you got free early-access; don't share the
 artifact or your token; the software may be wrong, so don't make
 business decisions solely on its output; if something goes wrong, we
 owe you nothing; we can pull your access at any time.

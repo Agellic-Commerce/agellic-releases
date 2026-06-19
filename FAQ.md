@@ -1,6 +1,6 @@
 # FAQ
 
-Answers to questions cohort testers actually ask.
+Answers to questions testers actually ask.
 
 ## Keepa tokens
 
@@ -46,17 +46,18 @@ Keepa account dashboard at [keepa.com/#!api](https://keepa.com/#!api).
 Ask Claude to run `check_token_balance`. It's a free local read —
 no Keepa call, no cost.
 
-## Beta vs GA
+## Release status & roadmap
 
-### What does "closed beta" mean here?
+### What does "early-access" mean here?
 
-Unsigned build artifacts distributed via the
-`Agellic-Commerce/agellic-releases` GitHub repo to invited cohort
-testers. There's no supply-chain attestation yet, no automatic
-updates, and no public signup. Issues are triaged manually by the
-agellic team via `support@agellic.com`.
+v1.0.0 is a stable release, but distribution is still early-access:
+unsigned build artifacts delivered via the
+`Agellic-Commerce/agellic-releases` GitHub repo to invited testers,
+with no supply-chain attestation yet, no automatic updates, and no
+public signup. Issues are triaged manually by the agellic team via
+`support@agellic.com`.
 
-### What's planned for GA?
+### What's still on the roadmap?
 
 - Sigstore / cosign supply-chain attestation
 - Signed checksums published alongside each release
@@ -66,10 +67,13 @@ agellic team via `support@agellic.com`.
 No dates promised — these are the gates we're working through, not
 a schedule.
 
-### Will my license keep working as the beta evolves?
+### Do I need a new license for v1.0.0?
 
-Yes. Your beta license stays valid going forward — no expiry, no
-reissue, no migration step on our end.
+Yes — a one-time reissue. The v1.0.0 build does not accept beta-era
+tokens, so we've issued fresh license tokens to all active testers; use
+the v1.0.0 token from your latest email. If a future build ever falls
+outside your license's coverage window, you'll get a clear error at
+startup and we'll renew it — email `support@agellic.com`.
 
 ## Privacy
 
@@ -111,15 +115,16 @@ work there too.
 
 ### Cowork limitations?
 
-Cowork (Claude Desktop's agent-mode surface) currently strips
-`type: 'image'` content blocks from MCP tool results before the model
-sees them. The practical effect: `get_product_chart` falls back to
-its text-only summary in Cowork instead of showing the rendered PNG.
-Every other tool works normally. Regular Claude Desktop chat renders
-the chart inline as expected.
+In Cowork (Claude Desktop's agent-mode surface), `get_product_chart`
+can't display the chart image: the sandboxed VM doesn't paint inline
+image content blocks and blocks reads of host-saved files. The model
+still receives the chart for analysis, so you get an accurate readout
+plus the Keepa product URL — just not the inline picture. Every other
+tool works normally. Regular Claude Desktop chat and Claude Code both
+render the chart inline.
 
-In the meantime, switch to a regular chat thread when you need chart
-visuals.
+When you need the chart visual, use a regular Claude Desktop chat thread
+or Claude Code.
 
 ## Exchange rates
 

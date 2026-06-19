@@ -1,7 +1,7 @@
 # Troubleshooting
 
 First-install behavior, log locations, and the handful of things most
-likely to go sideways on your first run of agellic-mcp v0.5.0-beta.3.
+likely to go sideways on your first run of agellic-mcp v1.0.0.
 
 ## 1. First-install behavior — what to expect
 
@@ -21,7 +21,7 @@ After you drag `agellic-mcp.mcpb` into Settings → Extensions:
    placeholder along with a description of what to enter and where.
 4. Once you save the credential form, Claude Desktop auto-restarts the
    extension. After ~2-5 seconds the placeholder is replaced with the
-   full **9-tool** set and you're ready to use agellic.
+   full **11-tool** set and you're ready to use agellic.
 
 You should **not** see a red `Agellic could not find a valid license`
 banner on a brand-new install. If you do, the configuration-pending
@@ -42,7 +42,7 @@ After you `unzip agellic-mcp.zip` and run `node install.mjs`:
    the MCP config entry — if something is wrong (bad license, bad Keepa
    key) you'll see the error immediately, not on first tool call.
 4. There is no placeholder mode on Claude Code — either the install
-   completes with all 9 tools available, or it fails with a specific
+   completes with all 11 tools available, or it fails with a specific
    error you can act on.
 
 ## 2. Log locations
@@ -95,11 +95,10 @@ the credential form, and Claude Desktop is showing a red error banner
 saying `Agellic could not find a valid license` before you've entered
 anything.
 
-**Cause:** The configuration-pending detection didn't fire. In
-v0.5.0-beta.1 the server handles a Claude Desktop quirk where
-unsubstituted `${user_config.X}` placeholders are passed as **literal
-text** (not empty string) when the credential form is blank — this is
-defended against in current code.
+**Cause:** The configuration-pending detection didn't fire. The server
+handles a Claude Desktop quirk where unsubstituted `${user_config.X}`
+placeholders are passed as **literal text** (not empty string) when the
+credential form is blank — this is defended against in current code.
 
 **Remedy:** Open `~/Library/Logs/Claude/mcp-server-agellic.log` (macOS)
 or `%APPDATA%\Claude\Logs\mcp-server-agellic.log` (Windows) and search
@@ -191,10 +190,10 @@ job rather than blocking on the bucket — poll with `check_job_status`
 and the result will be ready when the bucket has refilled enough to
 process it. You don't need to manually re-issue the request.
 
-### 7. Claude Desktop: 9 tools don't appear after install
+### 7. Claude Desktop: 11 tools don't appear after install
 
 **Symptom:** You installed the `.mcpb`, the extension shows as
-connected, but the tool list shows fewer than 9 tools (or only
+connected, but the tool list shows fewer than 11 tools (or only
 `_configure_agellic` persists after you've saved credentials).
 
 **Cause:** Claude Desktop only re-reads its extension's tool list on
@@ -202,22 +201,26 @@ cold start. A window close (Cmd+W on macOS, or the X button on Windows)
 doesn't count — the app process is still running.
 
 **Remedy:** Fully quit Claude Desktop (**Cmd+Q on macOS**, or right-click
-the tray icon → Quit on Windows) and reopen. The full 9-tool set will
+the tray icon → Quit on Windows) and reopen. The full 11-tool set will
 appear.
 
 ### 8. Cowork shows charts as text-only
 
 **Symptom:** You asked for a product price chart via Cowork (Claude
-Desktop's agent-mode surface) and got the text summary but no image.
-The same tool call from regular Claude Desktop chat renders the chart
-fine.
+Desktop's agent-mode surface) and got a text summary plus the Keepa URL
+but no rendered image. The same tool call from regular Claude Desktop
+chat or Claude Code renders the chart fine.
 
-**Cause:** Cowork's connector pipeline strips MCP `type: 'image'`
-content blocks downstream of the server, before the LLM ever sees them.
-The chart is generated successfully — the image bytes just never reach
-the model.
+**Cause:** Cowork runs the agent inside a sandboxed VM that (a) doesn't
+paint inline `type: 'image'` content blocks for the user and (b) blocks
+reads of files written outside the session's allowed directories — so a
+host-saved chart PNG can't be reached either. The chart is generated
+successfully and the model still receives the image for analysis; only
+the inline display to the user is unavailable on this surface.
 
-**Remedy:** None on the agellic side. This is a known Cowork-side
-limitation, not an agellic bug. Use regular Claude Desktop chat when
-you need chart images.
+**Remedy:** None on the agellic side — this is a Cowork sandbox
+constraint, not an agellic bug. In Cowork, use the data readout plus the
+Keepa product URL the tool returns (pair the chart request with
+`get_product_details` for a fuller picture). When you want the rendered
+chart, use regular Claude Desktop chat or Claude Code.
 

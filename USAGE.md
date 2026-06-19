@@ -1,7 +1,7 @@
 # Usage examples
 
 A starter set of prompts to try once `agellic-mcp` is installed and
-connected. These are not exhaustive — agellic gives Claude nine tools
+connected. These are not exhaustive — agellic gives Claude eleven tools
 and they compose freely. This is a starter set; the per-tool reference
 is in [TOOLS.md](./TOOLS.md).
 
