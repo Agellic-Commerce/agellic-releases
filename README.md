@@ -1,10 +1,60 @@
-# agellic-releases
+# Agellic — Amazon product intelligence for AI assistants
 
-Pre-built release artifacts for **agellic-mcp** — Buy-Box-aware Amazon
-product intelligence inside Claude.
+**Ask in plain English, get a decision — not a spreadsheet.** Demand
+estimates, Buy Box and stock signals, cross-marketplace arbitrage, and
+bulk screening, powered by your own [Keepa](https://keepa.com/) key.
 
-Source code lives in the private `Agellic-Commerce/agellic-mcp` repo.
-This repo hosts only the published release artifacts.
+agellic is a local [Model Context Protocol](https://modelcontextprotocol.io)
+(MCP) server, so it runs in any MCP-compatible assistant. Today it ships
+with one-click installers for **Claude Desktop** and **Claude Code**,
+with more hosts as the MCP ecosystem grows.
+
+> Source code lives in the private `Agellic-Commerce/agellic-mcp` repo;
+> this repo hosts the published release artifacts.
+
+## Why agellic
+
+**Answers, not spreadsheets.** It reads Keepa's raw history and hands the
+model the *conclusions* — Buy Box health, stock depth, rank trends,
+out-of-stock patterns, demand stability, seasonality — so you ask in
+plain English and get a judgment, not a CSV to squint at.
+
+**Demand Read.** A calibrated demand-estimation model — a real read on
+how a product moves, not just "BSR #14,000."
+
+**It won't torch your Keepa tokens.** Every call reports its token cost,
+balance is checked before spending, failed calls are refunded, and
+oversized jobs queue instead of erroring. Your metered quota is treated
+as the scarce resource it is.
+
+**Remembers across chats.** Fetched products and result sets are cached
+on your machine and shared across every chat and every connected app — so
+you never pay Keepa twice for the same lookup, and you can reopen a
+finder or cross-border run in a fresh conversation.
+
+**Background jobs that drain themselves — locally.** Too big to run right
+now? It queues and works the backlog automatically as Keepa tokens
+refill, no babysitting. It runs on **your machine, not the cloud — leave
+the app open and the machine awake for jobs to progress** — and the queue
+is durable, so quitting pauses it and relaunching resumes right where it
+left off.
+
+**Cross-marketplace arbitrage in one question.** Match a product across
+Amazon marketplaces by UPC/EAN, convert the prices, and surface the gap
+— sourcing research that's tedious by hand.
+
+**Natural-language product discovery.** Describe what you want ("car
+accessories under $30, rank under 50k") and it builds the Keepa Product
+Finder query — then bulk-screens and ranks the hits against your
+criteria. No filter-form wrangling.
+
+**Built for the model.** Compact, structured output that fits the context
+window (cheaper, faster, sharper answers) — plus price/BSR charts the
+model can actually see and read.
+
+**One paste, set up once, batteries included.** Runs in Claude Desktop
+and Claude Code today, configure once per machine (shared credentials), with
+category + demand calibration data bundled in — no extra downloads.
 
 ## Latest release
 

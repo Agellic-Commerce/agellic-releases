@@ -18,7 +18,7 @@ depth of data each tool needs:
 
 | Tool | Cost | What it pays for |
 |---|---|---|
-| `execute_keepa_finder` | cached page reads | discovery against pre-aggregated Keepa pages |
+| `execute_keepa_finder` | 10 + 1 per 100 ASINs returned | discovery against Keepa's pre-aggregated finder index |
 | `screen_products` | 3 tokens / ASIN | lite product record + buy-box snapshot |
 | `get_product_details` | ~8 tokens / ASIN (9 reserved, unused graph token refunded) | full product record (offers, history, dimensions, calibrated demand) |
 | `resolve_cross_border` | up to 12 tokens / ASIN | 3 for the source ASIN + 9 for up to 3 target-marketplace candidate fetches |
@@ -45,6 +45,29 @@ Keepa account dashboard at [keepa.com/#!api](https://keepa.com/#!api).
 
 Ask Claude to run `check_token_balance`. It's a free local read —
 no Keepa call, no cost.
+
+## Caching & background jobs
+
+### If I look up the same product twice, do I pay twice?
+
+No. Every paid fetch is cached on your machine — products for 24 hours,
+cross-border analyses for 7 days — and the cache is shared across every
+chat and both Claude apps. Re-asking about the same ASIN, even in a
+brand-new conversation or the other host, reads from cache at **zero
+Keepa tokens**. You can also reopen a stored finder, screen, or
+cross-border result by id long after the original chat scrolled away —
+see `get_finder_result` / `get_cross_border_result` / `get_codes_result`
+in [TOOLS.md](./TOOLS.md).
+
+### Do background jobs keep running if I close Claude?
+
+Only while a Claude app is open. The job runner lives inside the MCP
+server process, which Claude Desktop and Claude Code start and stop with
+the app — there's no cloud worker. Jobs are durable, though: quitting
+Claude (or restarting your machine) **pauses** the queue, and the next
+time you launch Claude the job resumes from where it left off — nothing
+is lost. So for a big screen or cross-border run, kick it off and leave
+Claude running; it drains as your Keepa tokens refill.
 
 ## Release status & roadmap
 

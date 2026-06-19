@@ -190,8 +190,14 @@ category is saturated.
   bucket runs low — Claude polls them automatically with
   `check_job_status`. Run `check_token_balance` any time to see what
   you have.
-- **The 24-hour cache is real.** Re-asking the same question later
-  the same day is usually free.
+- **Background jobs run on your machine, not the cloud.** A queued
+  screen or cross-border run drains as tokens refill — but only while a
+  Claude app stays open. Quit Claude (or let the machine sleep) and the
+  job pauses; relaunch and it resumes where it left off, nothing lost.
+  Kick off the big one, leave Claude running, come back to results.
+- **The 24-hour cache is real.** Re-asking the same question later the
+  same day is usually free — and the cache is shared across chats and
+  both Claude apps, so a fresh conversation re-reads it for nothing.
 - **Claude won't auto-chain expensive steps.** A finder result won't
   silently roll into a 500-ASIN screen — Claude waits for you to ask.
   Compound asks in a single turn ("find X and screen them") work as

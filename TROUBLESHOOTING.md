@@ -224,3 +224,26 @@ Keepa product URL the tool returns (pair the chart request with
 `get_product_details` for a fuller picture). When you want the rendered
 chart, use regular Claude Desktop chat or Claude Code.
 
+### 9. A background job is stuck at `pending` or `running`
+
+**Symptom:** A tool call returned a `jobId` (a large screen, cross-border
+run, or finder), but `check_job_status` keeps reporting `pending` or
+`running` and the result never lands.
+
+**Cause:** Two normal, non-error reasons — usually one of:
+
+- **Waiting for tokens.** A big job needs the Keepa bucket to refill
+  enough capacity before it can run. On the default 20 TPM plan a
+  500-ASIN screen (~1,500 tokens) takes several refill cycles. The job
+  stays `pending` until the bucket can cover it.
+- **The host isn't running.** The job runner lives inside the MCP server
+  process, which only runs while Claude Desktop or Claude Code is open.
+  Quit Claude or let the machine sleep/shut down and the queue stops
+  making progress — there is no cloud worker.
+
+**Remedy:** Leave a Claude app open and the machine awake; the job drains
+on its own as tokens refill. If you did quit, nothing is lost — the job's
+lease is reclaimed on the next launch and it resumes where it left off.
+Poll with `check_job_status`. There's no `cancel`; to abandon in-flight
+jobs, fully restart the MCP host.
+
