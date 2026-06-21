@@ -5,6 +5,30 @@ All notable changes to agellic-mcp are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] — 2026-06-21
+
+Corrects the demand read for low-volume products. Your existing v1.0.0
+license token works as-is — no reissue needed.
+
+### Changed
+
+- **Demand reads now reflect real volume below 50/mo.** The v1.0.0 engine
+  floored every estimate at 50 units/month, so a product that moves only a few
+  units a month could read "50–100." Demand is now a two-sided range built from
+  rank-drop and review velocity and can read below 50 (e.g. "~3"), with
+  confidence scaled to how well the two signals agree. A reported Amazon
+  "X+ bought" badge is still treated as truth and shown as-is.
+- **New "likely stalled" read** for a product with recent reviews but no rank
+  movement (reviews lag sales, so it's most likely stale past demand) instead of
+  inventing a current number.
+- **`--upgrade` now refreshes the product cache** (Claude Code), so the new
+  demand math takes effect on upgrade with no manual cache step.
+
+### Fixed
+
+- The sub-50 demand floor that could overstate slow sellers — the costly
+  direction of error for a sourcing decision.
+
 ## [1.0.0] — 2026-06-19
 
 First stable release. Graduates the `0.5.0-beta.*` series — the beta

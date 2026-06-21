@@ -1,7 +1,7 @@
 # Tool Reference
 
 This document is the practitioner reference for the 11 MCP tools exposed by
-agellic-mcp v1.0.0. Each section covers what the tool does, what
+agellic-mcp v1.1.0. Each section covers what the tool does, what
 it costs in Keepa tokens, what inputs it accepts, what it returns, and the
 operating rules worth knowing before you turn it loose on a candidate set.
 All Keepa token costs are concrete numbers measured against current

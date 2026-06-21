@@ -73,7 +73,7 @@ Claude running; it drains as your Keepa tokens refill.
 
 ### What does "early-access" mean here?
 
-v1.0.0 is a stable release, but distribution is still early-access:
+v1.1.0 is the current stable release, but distribution is still early-access:
 unsigned build artifacts delivered via the
 `Agellic-Commerce/agellic-releases` GitHub repo to invited testers,
 with no supply-chain attestation yet, no automatic updates, and no
@@ -90,13 +90,14 @@ public signup. Issues are triaged manually by the agellic team via
 No dates promised — these are the gates we're working through, not
 a schedule.
 
-### Do I need a new license for v1.0.0?
+### Do I need a new license for v1.1.0?
 
-Yes — a one-time reissue. The v1.0.0 build does not accept beta-era
-tokens, so we've issued fresh license tokens to all active testers; use
-the v1.0.0 token from your latest email. If a future build ever falls
-outside your license's coverage window, you'll get a clear error at
-startup and we'll renew it — email `support@agellic.com`.
+No. If you already have a v1.0.0 license token, it works as-is on v1.1.0 —
+same signing key, same coverage window. (Only the beta → v1.0.0 graduation
+required a one-time reissue, because v1.0.0 rotated the signing key and
+stopped accepting beta-era tokens; use the v1.0.0 token from that email.) If
+a future build ever falls outside your license's coverage window, you'll get
+a clear error at startup and we'll renew it — email `support@agellic.com`.
 
 ## Privacy
 
