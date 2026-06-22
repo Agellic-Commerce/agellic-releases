@@ -5,6 +5,23 @@ All notable changes to agellic-mcp are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] — 2026-06-21
+
+Sharpens demand reads that come from velocity (rank-drops or reviews). Your
+existing v1.0.0 license token works as-is — no reissue needed.
+
+### Changed
+
+- **Velocity-based demand estimates are no longer understated.** When a demand
+  read is built from rank-drop or review velocity rather than a direct category
+  match, the per-category conversion rates were anchored to Keepa's censored
+  "50+/mo" badge floor, which quietly pushed those estimates too low — most of
+  all for the ~40% of products sitting right at that floor. The rates now use
+  the middle of each Keepa badge band instead, lifting typical velocity-based
+  estimates by roughly 1.3–1.4×. Direct category-table reads are unchanged, so
+  most products read the same; the lift shows up on low-volume and
+  thinner-category products.
+
 ## [1.1.0] — 2026-06-21
 
 Corrects the demand read for low-volume products. Your existing v1.0.0
