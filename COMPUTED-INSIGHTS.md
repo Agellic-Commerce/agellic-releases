@@ -16,7 +16,7 @@ Read this when:
 - You're designing prompts or downstream tooling that consumes specific
   fields.
 
-The algorithms live in five families, mapping to specific blocks of the
+The algorithms live in six families, mapping to specific blocks of the
 `get_product_details` output:
 
 | Section | Output block | When it runs |
@@ -26,6 +26,7 @@ The algorithms live in five families, mapping to specific blocks of the
 | [3. Pattern detectors](#3-pattern-detectors) | `insights.{sawtooth, raceToBottom, sellerCliff}` | sellerCliff: always; sawtooth + raceToBottom: when offers data is present |
 | [4. Stability & trend](#4-stability--trend) | `insights.{demandStability, amazonOOS, priceTrend, priceVelocity, pricePosition, priceCompression, reviewPurge}` | Most always-on; `priceCompression` needs offers |
 | [5. Competition signals](#5-competition-signals) | `insights.{buyBoxVolatility, effectiveCompetition, fbaFbmConcentration, sellerConcentration, stockDepth}` | All require offers data |
+| [6. Composite risk signals](#6-composite-risk-signals) | `insights.{ipRisk, raceToBottomWarning}` | `ipRisk`: always; `raceToBottomWarning`: with offers data |
 
 **Source of truth.** Numeric constants in this doc are sampled from
 `src/core/demand/`, `src/core/product/seasonality/`, and
@@ -41,177 +42,140 @@ right place to look. Output shapes match the TypeScript types verbatim.
 
 ## 1. Calibrated demand
 
-Every `get_product_details` result carries a `demand` block: a calibrated monthly-unit-sales range backed by a pre-built panel of comparable products in the same Keepa subcategory and BSR/drops slot. The resolver returns a *range* (`rangeLow` / `centerLikely` / `rangeHigh`) rather than a point estimate because the per-product signals Keepa exposes — BSR drops, review velocity, sales-rank history — fan out across an order of magnitude even within a tight category slot. A range honestly communicates that spread; a single number would imply precision the data doesn't support.
+Every `get_product_details` result carries a `demand` block: a **velocity-implied** monthly-unit-sales estimate — *not* a verified sales figure. The estimator is **Demand Read v3**, a two-regime engine that turns a product's sales rank, rank-drops, and review velocity into a monthly-sales *range*. A range (rather than a point estimate) is honest about spread: the per-product signals Keepa exposes fan out across an order of magnitude even inside a tight category slot, so a single number would imply precision the data doesn't support.
 
-The resolver routes every product through one of five mutually exclusive `mode` values via a single decision tree. `standard` is the calibrated cell-table hit. `tier-split` fires when the cell is bimodal (winners and laggards live as two distinct populations). `floor-soft` flags cells where most products sit at Keepa's 50/mo monthly-sold badge floor. `multiplier-only` fires when no cell row matched but per-product velocity (drops or review counts) can still produce an estimate. `no-data` is the explicit "we have nothing useful" terminal. Mode tells the reseller *what method produced this number* — and what to discount accordingly.
+The block is a discriminated union on `mode` with three members:
+
+- **`read`** — the model produced an estimate (a range plus a plan-on number).
+- **`badge`** — Amazon itself reports an "X+ bought past month" figure; that *is* the demand, so the model is suppressed and the badge value is echoed.
+- **`no-read`** — nothing usable; a `reason` says why.
+
+`mode` is the discriminant — it gates which other fields are present. Read it first.
 
 ### Output shape
 
-`demand: { rangeLow, centerLikely, rangeHigh, confidence, mode, trajectory, sampleN, caveats }`
+**`read`** — `{ mode: 'read', source, confidence, centerLikely, rangeLow, rangeHigh, loSnap, hiSnap, hero, agree, clamped, revRollupScreened, cellKey, resolvedCategoryName, resolvedCategoryDepth, categoryVia, caveats }`
 
-- **`mode`** — one of `standard` / `tier-split` / `floor-soft` / `multiplier-only` / `no-data`. Discriminant; gates which other fields are populated.
-- **`rangeLow` / `centerLikely` / `rangeHigh`** — monthly units. For cell-backed modes these are the P10 / P50 / P75 of the panel; for `multiplier-only` they're synthesised from per-product velocity × category multipliers.
-- **`confidence`** — `high` / `medium` / `low`. Reflects whether independent signals corroborate the central estimate (see Confidence assignment below).
-- **`trajectory`** — `accelerating` / `steady` / `slowing`. Cell-population trend over the recent window. `multiplier-only` and `no-data` default to `steady`.
-- **`sampleN`** — count of unique ASINs that fed the cell estimate. `0` in `multiplier-only`.
-- **`fallbackLevel`** — `subcat` / `parent` / `root`. Which depth in the cat tree the matched row came from. `subcat` is the deepest and most relevant; `root` means the resolver had to walk all the way up.
-- **`cellQuality`** — `happy_middle` / `wide_active` / `dead_floor` / `bimodal` / `thin` / `normal`. Population shape of the matched cell. `null` in `multiplier-only`.
-- **`dropsEstimate` / `dropsAgreement`** — secondary estimate from `drops30 × salesPerDropP50` and its agreement classification (`in-range` / `near` / `far` / `no-data`) against the cell range.
-- **`reviewsEstimate` / `reviewsAgreement`** — same shape using `reviewsAdded30 × salesPerReviewP50`.
-- **`salesPerDropP50` / `salesPerReviewP50`** — the category multipliers used, with `multiplierMatchDepthDrops` / `multiplierMatchDepthReviews` recording which level of the cat chain supplied each.
-- **`tiers`** — only in `tier-split` mode. Two entries (`low`, `high`) with the peak value and ASIN count behind each peak.
-- **`floorMessage`** — only in `floor-soft` mode. Plain-language explanation of the floor.
-- **`caveats`** — free-text qualifier strings the agent surfaces verbatim ("estimate from cross-marketplace baseline", "category unknown to demand tree", etc.).
+- **`source`** — `in-domain` (US/CA, backed by calibrated cell + multiplier tables) or `cross-marketplace`. In practice a `read` is always `in-domain`; unsupported domains demote to `no-read` (see Cross-domain fallback).
+- **`centerLikely`** — the conservative **plan-on** monthly number. Regime A: the cell median (`soldP50`, a true centre). Regime B: the *floor* of the bracket (not a centre) — so a slow mover plans on its honest low end.
+- **`rangeLow` / `rangeHigh`** — numeric monthly-unit bounds (round-to-nearest). **No 50-unit floor** — a Regime B read can be single-digit (e.g. `~3`).
+- **`loSnap` / `hiSnap`** — the bounds snapped *down* to a display ladder (`50, 100, 150, 200, 300, 500, 700, 1K, 1.5K, 2K`, with a `2K+` cap and bare integers below 50). At a grid edge the snapped label can sit one bucket below the rounded number — intentional (snapping always rounds conservative).
+- **`hero`** — ready-to-print string built from the snaps: `~lo - hi`, collapsing to `~lo` when both snaps match, or `2K+` at the cap.
+- **`confidence`** — `high` / `medium` / `low` (see Confidence assignment).
+- **`agree`** — the two independent velocity reads (rank-drops and reviews) corroborated each other.
+- **`clamped`** — the band's rank ceiling capped a bound (raw velocity implied more sales than the product's rank supports).
+- **`revRollupScreened`** — review velocity looked like a variation-family rollup (inflated by sibling ASINs) and was excluded from the read.
+- **`cellKey`** — the resolved cell slot `"<bsrBand>|<dropsBand>"`, or null when no cell anchored the read. This encodes the **rank-scale (cell) anchor**.
+- **`resolvedCategoryName` / `resolvedCategoryDepth` / `categoryVia`** — the **velocity anchor** category and how it was chosen (see Category resolution). Depth is `0` (root) / `1` / `2`.
+- **`caveats`** — free-text qualifiers to surface verbatim (always the velocity-implied disclaimer; plus rank-ceiling cap, rollup exclusion, unknown-categories, etc.).
+
+**`badge`** — `{ mode: 'badge', badgeMonthlySold, caveats }`. `badgeMonthlySold` is Amazon's reported "X+ bought past month" value (also at `sales.monthly.value`).
+
+**`no-read`** — `{ mode: 'no-read', reason, caveats }`. `reason` is one of seven values (see Mode: no-read); `caveats[0]` is the human-readable explanation.
 
 ### Mode selection
 
-The resolver runs a single decision tree top to bottom; the first applicable branch wins.
+The resolver runs a fixed order; the first applicable branch wins.
 
-1. **Cross-domain short-circuit.** If the product's Keepa domain isn't in `SUPPORTED_IN_DOMAIN_KEEPA_DOMAINS` (currently US and CA only), route immediately to the cross-marketplace generic and skip every in-domain step. Returns a `multiplier-only` (or `no-data` if drops30 is missing/zero) capped at `low` confidence.
-2. **Resolve candidate categories.** Build the per-product cat list from Keepa's `salesRanks` and `categoryTree`. If none survive (every cat is unknown to `demand_categories`), return `no-data` / `reason: 'unknown-categories'`.
-3. **drops30 short-circuit (before any cell lookup).** If `drops30 === null`, return `no-data` / `'drops30-missing'`. If `drops30 === 0`, return `no-data` / `'drops30-zero'`.
-4. **Walk candidates deepest-first; probe the cell table.** For each candidate cat, assign a `(bsrBand, dropsBand)` cell and look up the row at `subcat → parent → root`. First non-null hit wins.
-5. **Lookup category multipliers once** at the deepest candidate; drops and reviews triplets walk the cat chain independently.
-6. **Branch on cell hit:**
-   - **Cell hit + usable percentiles** → `translate()` selects `tier-split` (bimodal with both peaks present), else `floor-soft` (P10 === 50), else `standard`.
-   - **Cell hit but degenerate** (floor-collapse where P10 === P75 === 50, or non-tier-split row with sparse percentiles) → fall through to `multiplier-only` with confidence capped at `low`; if multipliers are also null, fall through to the cross-marketplace generic.
-   - **No cell hit** → `translateMultiplierOnly()`. Emits `multiplier-only` if at least one of `{drops, reviews}` estimates is non-null, otherwise `no-data` / `'no-cell-match'`.
+1. **Badge short-circuit (all domains, no I/O).** If Amazon reports any "X+ bought" badge (`sales.monthly.value !== null`), return `badge` immediately — a reported number is ground truth at any magnitude, and the model is suppressed so no competing number sits beside it.
+2. **Cross-marketplace fallback.** If the product's Keepa domain isn't US or CA (the only domains with first-class cell data), return `no-read` carrying at most a rough velocity hint in `caveats` — never a structured number (see Cross-domain fallback).
+3. **Resolve candidate categories** from the product's `salesRanks` + Keepa breadcrumb. None resolvable → `no-read` (`unknown-categories` if every category was unknown to the demand tree, else `rank-missing`).
+4. **Pick the anchors** (cell vs velocity — see Category resolution) and assemble the per-category constants by walking each category chain `subcat → parent → root`.
+5. **Run the engine** on `(constants, bsr, drops30, reviewsAdded30)`.
+6. **Map the engine result to a mode** — a signal (High/Medium/Low) → `read`; `stalled` / no-signal / out-of-range / no-rank → `no-read` with the matching reason.
 
-### Mode: standard
+### Category resolution (which category anchors the read)
 
-**What it measures.** The P10 / P50 / P75 monthly-units of every comparable ASIN in the same Keepa category cell — i.e. the same `(catId, BSR band, drops30 band)` slot.
+Demand Read uses **two** category anchors, which usually coincide but can diverge:
 
-**When it fires.** A cell row exists for the candidate cat at some depth, the row isn't bimodal-with-both-peaks, P10 isn't the Keepa badge floor of 50, and the percentile triplet is populated.
+- The **cell / rank-ceiling anchor** is the product's `salesRanks` resolution. The cell estimate and the per-band rank ceiling are absolute-rank-scale numbers, so they *must* stay on the category that produced them. This anchor is reflected in `cellKey`.
+- The **velocity anchor** drives the scale-free multipliers (sales-per-drop, sales-per-review) and the review-rollup median. Because those are ratios, not rank-scale numbers, the velocity anchor can sit on a *deeper* category than the cell anchor. It's reported in `resolvedCategoryName` / `resolvedCategoryDepth`, with `categoryVia` recording how it was chosen.
 
-**Method.** Build candidate cats from the product's Keepa salesRanks, sorted by depth descending. For each, compute `(bsrBand, dropsBand)` via `assignCell` against the pre-built grid, then look up the cell row with subcat → parent → root fallback. Take the deepest hit. The matched row's `soldP10` / `soldP50` / `soldP75` become `rangeLow` / `centerLikely` / `rangeHigh` directly. Compare the per-product drops and reviews secondary estimates (drops30 × multiplier, reviewsAdded30 × multiplier) against that range to classify agreement and against `soldP50` for the confidence ladder.
+**`categoryVia`:**
 
-**Constants.**
-- `KEEPA_BADGE_FLOOR = 50` — Keepa's lowest monthly-sold tier; cell rows fully at this value are uninformative.
-- `AGREEMENT_TOLERANCE = 0.25` — confidence ladder's "agree" band: smaller/larger ratio ≥ 0.75 against `soldP50`.
+- **`sales-rank`** (the default) — the velocity anchor is the same `salesRanks`-derived category as the cell anchor.
+- **`breadcrumb`** — the `salesRanks` anchor landed on a **root** department (depth 0), so the velocity anchor was re-anchored onto the deepest **same-root** category carried by the product's Keepa breadcrumb (`categoryTree`). This targets pruned-leaf items (e.g. collectibles) whose `salesRanks` only resolve to a top-level department: anchoring velocity on the whole department understates the specific subcategory. The re-anchor fires **only** from root and **only** adopts a strictly-deeper, same-root category, so every already-deep or multi-root product is unaffected (stays `sales-rank`). The cell / ceiling anchor is never moved — only the velocity multipliers follow the breadcrumb.
 
-**How to read it.**
-- `centerLikely` is the typical monthly volume for products like this in this slot.
-- `rangeLow` and `rangeHigh` bracket the middle of the population — there are real products selling both above and below.
-- `dropsAgreement === 'in-range'` plus `reviewsAgreement === 'in-range'` is the strongest possible corroboration; treat the central estimate accordingly.
+When the two anchors diverge, `cellKey` (rank-scale) and `resolvedCategory*` (velocity) surface both, so you can see exactly what produced the number.
 
-**Caveats.**
-- Range is *population spread*, not measurement error — this product could realistically land anywhere within it.
-- `fallbackLevel === 'root'` means the deeper subcats had no matching slot; the estimate is broader than ideal.
+### Mode: read — the two-regime engine
 
-### Mode: tier-split
+The engine routes every product through exactly one of two regimes, decided by whether the matched cell is a trustworthy anchor.
 
-**What it measures.** Two distinct populations within the same slot — typically winners and laggards. The cell is bimodal with two histogram peaks the calibration pipeline could identify and count.
+A cell is a **usable anchor** when it passes the cell gate (`floorShare < 0.5` and `nUnique ≥ 5`) *and* its median sits above Keepa's badge floor (`soldP50 > 50`). That floor of 50 is Keepa's lowest monthly-sold tier — at or below it the cell is *censored* ("≤50, can't tell"), so it can't anchor a number.
 
-**When it fires.** The matched cell row has `isBimodal === true` AND both `bimodalPeak1` and `bimodalPeak2` are non-null. Takes precedence over `floor-soft` and `standard`.
+**Regime A — uncensored cell (the cell IS the read).**
 
-**Method.** Both peaks are emitted in the `tiers` array — `low` peak first, `high` peak second — each with the peak value as a degenerate `[v, v]` range and the unique-ASIN count `n` behind that peak. `centerLikely` and `rangeLow`/`rangeHigh` still come from the cell's P10/P50/P75 percentiles (the cluster centers themselves live in `tiers`).
+- `centerLikely = soldP50` (capped at the band rank ceiling); the range is the cell's empirical IQR `[soldP25, soldP75]`.
+- The two velocity reads only set *confidence* — they never move the number. The range stays the IQR even when the velocities disagree (disagreement caps the *label*, not the bracket).
+- Confidence is **High** when both velocity reads are live, agree with each other *and* corroborate the cell median (each within a 2× factor), and the category's multiplier spread isn't `wide`; otherwise **Medium**. Regime A never returns Low.
 
-**Constants.** None unique to this mode beyond `KEEPA_BADGE_FLOOR` and `AGREEMENT_TOLERANCE` shared with `standard`.
+**Regime B — censored / blind cell (velocity-only, no floor).**
 
-**How to read it.**
-- This slot has two outcomes — most products land near one peak or the other, not in between.
-- Compare your candidate ASIN's listing quality, review count, and price to the cohort to predict which peak it'll land in.
-- `n` per peak tells you how lopsided the split is; a 200/15 split means the high tier is rare.
+The censored "50" is discarded and the read becomes a real bracket built from the product's own velocity × the category's measured multipliers. There is **no** 50-unit floor — a one-a-month mover reads `~1`.
 
-**Caveats.**
-- The naive P50 is misleading here — the central estimate sits between two modes, not at either.
-- A product can move between tiers as listing quality, reviews, or price shift.
-
-### Mode: floor-soft
-
-**What it measures.** A cell where the entire bottom of the population sits at Keepa's 50/mo monthly-sold badge floor. The "real" demand below 50 is unobservable to Keepa, so the cell's lower bound is artificial.
-
-**When it fires.** Matched cell row has `soldP10 === 50` AND the row isn't tier-split. Lower precedence than `tier-split`, higher than `standard`. (When `soldP10 === soldP75 === 50` the cell is fully at the floor and the resolver routes to `multiplier-only` instead — see decision tree step 6.)
-
-**Method.** Same percentile-to-range mapping as `standard`, but a `floorMessage` field carries the explanation: "Many products in this band sit at the 50/mo Keepa floor." Everything else (sample size, confidence, agreement) is computed identically.
-
-**Constants.** `KEEPA_BADGE_FLOOR = 50` — defines what counts as "at the floor".
+- **Drops + reviews both live:** the bracket floor is the larger of `drops30` and the smaller of the two **P25** velocity estimates; the ceiling is the larger of the two **P50** estimates (per-drop = `drops30 ×` the category sales-per-drop rate; per-review = `reviewsAdded30 ×` the sales-per-review rate). If the two P50 estimates diverge past **5×**, that's a conflict (one signal is lagging or noise) and the read collapses to the drops-only bracket `[drops30, drops30 × sales-per-drop P50]` — a divergent review can't pull the ceiling below the honest median the drops alone imply.
+- **Drops only:** `[drops30, drops30 × sales-per-drop P50]`.
+- **Reviews only (not rollup-screened):** `stalled` — reviews lag sales, so recent reviews with no rank movement most likely reflect *past* demand surfacing late, not current sales. Reported as `no-read` / `stalled`.
+- **Neither, or reviews-only but rollup-screened:** `no-read` / `no-clear-read`.
+- `centerLikely` is the bracket **floor** (the conservative plan-on number). `drops30` is a hard mechanical floor — each rank-drop implies ≥ 1 sale, so the lower bound never sits below it, and a category with no measured sales-per-drop rate values each drop at exactly 1 (understates, never overstates).
+- Confidence maxes at **Medium** (when the two reads agree within 2× *or* drops are plentiful, ≥ 5); otherwise **Low**. Regime B never returns High.
 
 **How to read it.**
-- `rangeLow` of 50 is a Keepa-reporting floor, not a measured floor — real bottom-tier products in this slot could be selling fewer.
-- `centerLikely` and `rangeHigh` are still meaningful; treat `rangeLow` as "≤50".
-- Lots of slow movers in this slot — be skeptical of a candidate ASIN unless drops or review velocity says otherwise.
 
-**Caveats.**
-- The floor caveat in `floorMessage` should be surfaced verbatim — it reframes the lower bound.
-- Per-product confidence often lands `low` here because the cell population isn't informative about real spread.
+- `centerLikely` is what to plan on — the typical volume in Regime A, a deliberately conservative low end in Regime B.
+- `rangeLow` / `rangeHigh` bracket the realistic spread; real products sell at both ends.
+- `agree === true` with `confidence: high` is the strongest corroboration — treat the number accordingly.
+- `clamped === true` means the rank ceiling pulled a bound down: the raw velocity implied more sales than the product's rank supports.
 
-### Mode: multiplier-only
+### Mode: badge
 
-**What it measures.** Per-product velocity scaled by a category-level conversion ratio — sales-per-drop or sales-per-review. Used when no cell row exists for this BSR/drops slot at any depth, or when the matched cell is degenerate (floor-collapsed, sparse percentiles).
+When Amazon shows an "X+ bought past month" badge, that figure *is* the demand and the model steps aside: `badgeMonthlySold` echoes the value (the badge itself is at `sales.monthly.value`) and no model range is computed. This holds at any magnitude and stays correct if Amazon's display floor ever drops below 50. Treat the badge as ground truth.
 
-**When it fires.** Either (a) every candidate cat returned no cell hit at subcat/parent/root and at least one of `{dropsEstimate, reviewsEstimate}` is non-null, or (b) the cell hit was structurally unusable and falls through. Also the output mode of the cross-domain fallback for unsupported Keepa domains.
+### Mode: no-read
 
-**Method.** Three synthesis paths, first applicable wins:
-1. **Drops × IQR (preferred).** When `drops30 > 0` and all three of `salesPerDropP25` / `P50` / `P75` are present: `rangeLow = drops30 × P25`, `centerLikely = drops30 × P50`, `rangeHigh = drops30 × P75`. Confidence: `low`.
-2. **Both estimates (legacy).** When IQR isn't available but both drops and reviews estimates exist: `rangeLow = min(d, r)`, `rangeHigh = max(d, r)`, `centerLikely = round((d+r)/2)`. Confidence: `medium` if `|d−r| / max(d, r) ≤ 0.5`, else `low`.
-3. **Single estimate (legacy).** Exactly one of drops or reviews is non-null: `rangeLow = pt × 0.6`, `rangeHigh = pt × 1.4`, `centerLikely = pt`. Confidence: `low`.
+`no-read` means the lookup ran but produced no usable range. `reason` is one of:
 
-If neither estimate is producible, returns `no-data` / `'no-cell-match'`. `fallbackLevel` is the more specific of the two multiplier match depths.
+- **`no-clear-read`** — the engine ran but no signal was live (no drops, no usable reviews).
+- **`stalled`** — recent reviews but no rank movement; likely stale past sales, not current demand (reviews lag sales). A distinct, informative state — not the same as "no signal."
+- **`rank-out-of-range`** — BSR beyond 300,000; too thin to read.
+- **`rank-missing`** — no resolvable BSR / candidate category.
+- **`unknown-categories`** — every candidate category was unknown to the demand tree.
+- **`no-activity`** — a cross-marketplace product with no drops and no reviews.
+- **`cross-marketplace`** — an unsupported domain; only a rough extrapolated hint in `caveats`, never a number.
 
-**Constants.**
-- IQR path: drops30 × P25 / P50 / P75 — multipliers themselves are category-specific, calibrated from US/CA panels.
-- Legacy two-estimate medium gate: `|d − r| / max(d, r) ≤ 0.5` — within 50% of each other.
-- Single-estimate widening: `±40%` — `rangeLow = pt × 0.6`, `rangeHigh = pt × 1.4`.
-- Reviews-estimate floor: `reviewsAdded30 ≥ 1` — every review is a verified-purchase guaranteed sale, so any observed velocity is signal.
-- `cellQuality = null`, `sampleN = 0`, `trajectory = 'steady'` — no panel data backs the estimate.
-
-**How to read it.**
-- The numbers come from this product's own velocity, not a panel of comparables — treat as an extrapolation.
-- Wider ranges (especially the legacy two-estimate path) signal real disagreement between drops and reviews methods.
-- `confidence` is structurally capped — `multiplier-only` never claims `high`.
-
-**Caveats.**
-- Always carries `'no cell data; range estimated from category multiplier(s)'`.
-- Degenerate cell fall-through adds a second caveat explaining why the cell was discarded.
-
-### Mode: no-data
-
-**What it measures.** Nothing. The resolver ran successfully but couldn't produce a useful range.
-
-**When it fires.** One of four named reasons:
-- `'unknown-categories'` — every Keepa cat on the product was unknown to `demand_categories`.
-- `'drops30-missing'` — Keepa didn't report `drops30`.
-- `'drops30-zero'` — `drops30 === 0`; no recent sales activity at all.
-- `'no-cell-match'` — cell table missed AND neither multiplier estimate was producible.
-
-**Method.** Each reason is set by a specific branch in the decision tree; no estimation is attempted. Distinct from `logical.demand === null`, which means the lookup threw or wasn't run at all.
-
-**Constants.** None.
-
-**How to read it.**
-- `'drops30-zero'` is a real signal — Keepa is telling you this product had zero rank drops in the last 30 days. Likely dead.
-- `'drops30-missing'` and `'unknown-categories'` mean the resolver couldn't see enough to estimate; treat as "we don't know", not "it's zero".
-- `'no-cell-match'` is rare and indicates a genuinely uncovered BSR/drops slot.
-
-**Caveats.**
-- `caveats[0]` carries the human-readable reason — surface it.
+(Distinct from `logical.demand === null`, which means the lookup threw or wasn't run at all.)
 
 ### Confidence assignment
 
-For cell-backed modes (`standard` / `tier-split` / `floor-soft`), confidence comes from a three-tier ladder evaluated in order. The cell must first be "informative" — NOT (`soldP10 === 50 AND soldP75 === 50`). If the population is fully at the Keepa badge floor, confidence is immediately `low`.
+Confidence is regime-bounded, so the label itself tells you which kind of estimate you're reading:
 
-- **`high`** — cell informative AND `dropsEstimate` agrees with `soldP50` within `AGREEMENT_TOLERANCE = 0.25` AND (`reviewsEstimate` also agrees OR `reviewsAdded30 ≤ REVIEWS_SILENT_MAX = 1`). "Reviews silent" means too few reviews for the secondary signal to call agreement or disagreement.
-- **`medium`** — cell informative AND (`drops` agrees OR `reviews` agrees), OR cell informative AND no per-product input is available BUT `nUnique ≥ STRONG_CELL_MIN_N = 30` AND `cellQuality ∈ {'normal', 'happy_middle'}`.
-- **`low`** — everything else: cell at floor, single weak signal, active disagreement between cell and both secondary methods, thin/bimodal cells, etc.
+- **Regime A** (cell-anchored): **High** or **Medium**, never Low. High requires both velocity reads live, agreeing with each other *and* corroborating the cell median (all within a 2× factor), with a non-`wide` category. Anything less is Medium.
+- **Regime B** (velocity-only): **Medium** or **Low**, never High. Medium when the drop and review reads agree within 2× *or* drops are plentiful (≥ 5); otherwise Low.
 
-Agreement uses `agreesWithinTolerance`: `min(estimate, center) / max(estimate, center) ≥ 1 − tolerance`. Both sides must be positive — null or non-positive inputs return `false`.
+So `high` ⇒ a corroborated cell anchor, `low` ⇒ a thin velocity-only read, and `medium` sits between (a solid cell without full corroboration, or an agreeing / plentiful velocity read).
 
-For `multiplier-only`, confidence is computed inside `translateMultiplierOnly` per the IQR / two-estimate / single-estimate paths above and is structurally capped — `high` is unreachable. Cross-domain generic outputs pass `confidenceCap: 'low'`, locking confidence regardless of any synthetic agreement.
+### Key constants
+
+Sampled from `src/core/demand/reference-model.ts`; the code remains authoritative.
+
+- `BSR_MAX = 300,000` — above this BSR, `rank-out-of-range`.
+- `DEMAND_SALES_FLOOR = 50` — Keepa's lowest monthly-sold tier and the Regime A/B selector (the cell median must exceed it to anchor). Since the sub-50 fix it is **no longer a floor** on the output — nothing is clamped up to it.
+- `AGREE_F = 2.0` — the "agree / corroborate" factor (a ratio ≤ 2× counts as agreement).
+- `SPREAD_COLLAPSE = 5.0` — the Regime B conflict threshold (collapse to the drops-only bracket).
+- `DROPS_PLENTIFUL = 5` — drops at/above which a one-sided or collapsed Regime B read earns Medium.
+- Display ladder: `50 · 100 · 150 · 200 · 300 · 500 · 700 · 1K · 1.5K · 2K`, capped at `2K+`, bare rounded integers below 50.
 
 ### Cross-domain fallback
 
-`SUPPORTED_IN_DOMAIN_KEEPA_DOMAINS = {1 (US), 6 (CA)}`. Every other Keepa domain (UK, DE, FR, JP, IT, ES, IN, MX) lacks first-class cell data, so the resolver short-circuits to `resolveCrossDomainGeneric` at the very top of the pipeline before any in-domain work runs.
+Calibrated cell + multiplier tables exist only for **US (domain 1)** and **CA (domain 6)**. Every other Keepa domain (UK, DE, FR, JP, IT, ES, IN, MX, …) lacks first-class data, so the resolver short-circuits before any in-domain work and **never emits a structured number** for those domains — a confident-looking figure off coarse constants is exactly the over-buy failure mode the engine is built to avoid.
 
-The fallback applies a single conservative multiplier set derived from CA's bottom-quartile categories (one step more conservative than CA's median, which itself runs ~50% of US):
-- `salesPerDropP25 = 2.0`, `salesPerDropP50 = 3.0`, `salesPerDropP75 = 4.5`
-- `salesPerReviewP25 = 2.5`, `salesPerReviewP50 = 3.5`, `salesPerReviewP75 = 5.0`
+Instead it returns `no-read`:
 
-These feed `translateMultiplierOnly` with `confidenceCap: 'low'` — even if the drops and reviews estimates happen to agree, confidence cannot rise above `low` because the agreement comes from the same synthetic constants and is meaningless. Same `drops30` short-circuits apply: missing or zero `drops30` returns `no-data` instead of a fabricated range.
+- with `reason: 'cross-marketplace'` plus a rough hint caveat (`rough cross-marketplace velocity hint: ~N/mo — extrapolated baseline, not a sales figure`) when there is drops or review activity, sized off CA bottom-quartile multipliers (one step under CA's median, itself ~50% of US — asymmetric conservatism: lean low);
+- with `reason: 'no-activity'` when there are no recent drops or reviews.
 
-The output always carries the caveat `'estimate from cross-marketplace baseline; we lack data for this domain'`. The design philosophy is asymmetric conservatism: over-estimating sales costs the reseller real money when a product under-performs visibly, while under-estimating only costs invisible missed opportunities. Lean low. When a third domain (likely UK) gets calibrated cell data, the constants will be re-derived; if multiple non-US-CA domains cluster, per-region constants will replace the single global generic.
-
-A second cross-domain entry point exists *inside* the in-domain pipeline: when a US/CA product hits the cell table but the row is degenerate AND neither multiplier estimate is producible, the resolver falls all the way through to `resolveCrossDomainGeneric` as a last resort. In-domain caveats (e.g. unknown-categories) are intentionally dropped at that point — the cross-marketplace baseline is so coarse that upstream context adds no useful signal.
+Every cross-domain output also carries `estimate from cross-marketplace baseline; we lack data for this domain`. When a third domain (likely UK) gets calibrated cell data, these constants get re-derived.
 
 ---
 
@@ -876,3 +840,70 @@ This section covers algorithms that score the competitive landscape — who is i
 - `turnoverBenchmark = fast` + `stockLevel = adequate` → healthy movement; competitors aren't sitting on dead stock.
 
 **Caveats.** Requires offers + per-offer stock data — not derivable from price history alone. Keepa stock sentinel (-1) is dropped to null; offers with no stock data don't inflate `liveOfferCount` — only offers that reported stock are counted. Trend regression needs ≥ 3 weekly buckets; otherwise `insufficient_history`. Velocity-derived fields (`stockLevel`, `turnoverPerMonth`, `turnoverPerYear`, `turnoverBenchmark`, `replenishmentRatio`, `inventoryClassification`) inherit the confidence of `velocityBasis` — `estimated` means treat the numbers as directional only.
+
+---
+
+## 6. Composite risk signals
+
+Two higher-order signals aggregate the per-family detectors above into a single actionable read. They introduce no new measurements — they combine outputs from sections 3–5 so you get one verdict instead of several raw flags.
+
+### IP risk (`insights.ipRisk`)
+
+**What it measures.** The likelihood that an intellectual-property complaint or platform enforcement action hit this listing, inferred from two corroborating footprints: a **seller cliff** (a sudden drop in seller count, §3) and a **review purge** (a sudden loss of reviews, §4). Runs for every product — both inputs are core signals, so offers data is not required.
+
+**Output shape.** `{ riskLevel, signals, confidence, recoverySummary, timelineDays, summary }`
+
+- **`riskLevel`** — `none` / `low` / `moderate` / `high` / `insufficient_data`.
+- **`signals`** — which footprints fired: `seller_cliff`, `review_purge`, and `concurrent_cliff_purge` when both landed close together.
+- **`confidence`** — `low` / `moderate` / `high`.
+- **`timelineDays`** — `{ cliffDaysAgo, purgeDaysAgo }` (either may be null), or null when neither fired.
+- **`recoverySummary` / `summary`** — plain-language status; surface verbatim.
+
+**Method.** An 8-case decision tree over the two signals:
+
+- A cliff and a purge are **concurrent** when any cliff event sits within **28 days** of any purge event (checked across all event pairs by timestamp).
+- A purge is **small** when fewer than **50** reviews were lost *and* the largest single drop is under **5%**; otherwise large.
+- A cliff is **recovered** only when *every* detected cliff event recovered (one lingering unrecovered cliff keeps the status unrecovered).
+
+The cases:
+
+1. Concurrent, with an unrecovered cliff → **high**.
+2. Concurrent, recovered, small purge → **moderate** (concurrent + recovered + *large* purge → **high**).
+3. Both present but not concurrent → **moderate**.
+4. Cliff only, medium/high severity → **moderate** (a single signal is capped at moderate).
+5. Purge only, small → **low**.
+6. Purge only, large → **moderate**.
+7. Cliff only, low severity → **low**.
+8. Neither → **none**.
+
+**How to read it.** `high` (a concurrent, unrecovered cliff + purge) is the strongest enforcement footprint — treat the ASIN as risky to source until you understand why sellers and reviews left together. A single signal never exceeds `moderate` on its own, because one footprint can have benign explanations (a seller exiting, a review-spam sweep). `timelineDays` tells you how fresh the events are.
+
+**Caveats.** This is a *correlation* read, not proof of an IP action — the summary deliberately hedges ("possible", "suggesting"). `insufficient_data` means neither underlying detector had enough history to run.
+
+### Race-to-bottom early warning (`insights.raceToBottomWarning`)
+
+**What it measures.** Whether a margin-eroding price war is *emerging*, aggregated from up to six competitive signals grouped into **four families** so correlated signals can't double-count. Runs when offers data is present (it draws on the offer-derived detectors).
+
+**Output shape.** `{ warningLevel, activeSignals, activeFamilies, signalDetails, priceDeclinePercent, seasonalAdjusted, summary }`
+
+- **`warningLevel`** — `none` / `watch` / `warning` / `strong_pattern` / `insufficient_data`.
+- **`activeSignals`** — raw count of individual signals that fired (reported for context).
+- **`activeFamilies`** — which of the four families are active; this is what sets the level.
+- **`signalDetails`** — the individual signal names that fired.
+- **`priceDeclinePercent`** — measured price decline (from `raceToBottom`).
+- **`seasonalAdjusted`** — true when a confirmed seasonal descending phase suppressed the price-direction family.
+
+**Method.** Each individual signal maps to a family:
+
+- **price_direction** — `race_to_bottom`, `price_falling` (price velocity falling).
+- **repricing_behavior** — `sawtooth_pattern`, `buy_box_volatility` (high/moderate).
+- **demand_supply** — `seller_growth` (seller count growing).
+- **margin_pressure** — `price_compression` (spread compressing).
+
+The level comes from the **active-family count** — *not* the raw signal count, so two correlated signals in one family can't inflate it: 0 → `none`, 1 → `watch`, 2–3 → `warning`, 4 → `strong_pattern`. It needs at least two of the five core inputs present, or it returns `insufficient_data`.
+
+**Seasonal suppression.** When the product has a *confirmed* seasonality in a descending phase, the price-direction family is dropped (a seasonal post-peak markdown isn't a competitive price war), `seasonalAdjusted` is set, and the summary says so.
+
+**How to read it.** `strong_pattern` (all four families) means broad, corroborated downward pressure — expect margin erosion. `watch` / `warning` are earlier signals; pair them with `priceDeclinePercent` and your own margin math. If `seasonalAdjusted` is true, discount the price-direction read — the decline is calendar-driven, not competition.
+
+**Caveats.** Aggregation only — the underlying detectors carry their own caveats (§3–§5). `activeSignals` can exceed the family count (correlated signals), so always read the *level* off families, not the raw signal tally.
