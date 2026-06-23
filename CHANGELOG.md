@@ -5,6 +5,28 @@ All notable changes to agellic-mcp are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] — 2026-06-23
+
+Sharper demand reads for products that only map to a broad department, plus a
+finder guardrail against wrong-marketplace category ids. Your existing v1.0.0
+license token works as-is — no reissue needed.
+
+### Changed
+
+- **Demand reads now anchor to the specific subcategory, not the whole
+  department.** When a product's sales-rank data only places it in a top-level
+  department (e.g. "Toys & Games"), the demand estimate used to blend that entire
+  department. It now follows the product's own category breadcrumb down to the
+  most specific matching subcategory (e.g. "Action Figures"), giving a tighter,
+  more accurate range. Products that already mapped to a specific subcategory
+  read the same.
+- **The product finder catches wrong-marketplace category ids before spending
+  tokens.** `execute_keepa_finder` rejects a category id that belongs to a
+  different Amazon marketplace than the one you're searching — a mistake that
+  used to slip through and return a plausible-but-wrong match count. It checks
+  every category field (include, exclude, and the sales-rank reference), and the
+  rejection costs zero tokens.
+
 ## [1.2.0] — 2026-06-21
 
 Sharpens demand reads that come from velocity (rank-drops or reviews). Your
