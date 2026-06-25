@@ -5,6 +5,53 @@ All notable changes to agellic-mcp are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] — 2026-06-25
+
+Background jobs you can see into and cancel, token costs that account for what's
+already cached, cross-border comparisons that price in your cache before
+charging, and cleaner upgrades. Your existing v1.0.0 license token works as-is —
+no reissue needed.
+
+### Added
+
+- **The background-job queue is now visible.** When a call is rate-limited and
+  queued, `check_job_status` shows the job's position in line, the token balance
+  it's waiting to reach before it can start, and an ETA based on your Keepa
+  refill rate — so a queued screen or lookup is no longer a black box.
+- **You can cancel a queued job before it starts.** `check_job_status` with
+  `action: "cancel"` abandons a pending job that hasn't begun. A job that has
+  already started finishes on its own.
+
+### Changed
+
+- **Token costs now subtract what's already cached.** Cost checks
+  (`check_token_balance`) and the job funding gate price in the ASINs you've
+  already pulled, so a re-run that's mostly cached leases immediately instead of
+  waiting to afford the full uncached price. Cached re-reads stay free.
+- **Cross-border comparisons are cache-aware.** `resolve_cross_border` counts
+  cached source products in its affordability check and ETA and only charges for
+  the uncached ones, so a partially-cached batch gets an accurate, lower cost
+  estimate instead of being quoted — or made to wait for — the full price.
+- **Duplicate requests collapse onto the one already in flight.** Submitting an
+  identical request while a matching job is still queued or running now reuses
+  that job instead of minting a second one that would double-spend tokens.
+- **A cancelled job reads as cancelled, not failed.** `check_job_status` now
+  distinguishes a job you cancelled from one that errored out.
+- **Oversized batches get a concrete split size.** When a request is too large to
+  ever fund within your token budget, the message now tells you the exact maximum
+  number of ASINs to split it into instead of a vague "too big."
+
+### Fixed
+
+- **Token accounting self-heals after a rate-limit.** On a real Keepa 429, the
+  local token tracking reconciles against Keepa's actual rate-limit headers, so
+  it can't drift out of sync and make you wait when you don't need to.
+- **Upgrades clear cached results cleanly.** Re-running the installer with
+  `--upgrade` now clears cached lookups, screens, finder and cross-border results
+  and the job queue (your credentials, rate-limit state and saved exchange rates
+  are kept). A result id from before an upgrade now re-runs cleanly instead of
+  silently re-charging against a stale cache.
+
 ## [1.3.0] — 2026-06-23
 
 Sharper demand reads for products that only map to a broad department, plus a
