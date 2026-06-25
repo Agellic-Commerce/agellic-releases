@@ -25,7 +25,7 @@ becomes the binding constraint for sync vs background-job behavior.
 | `resolve_codes` | Bulk-resolve supplier UPC/EAN/GTIN/ISBN codes (up to 500 rows) to candidate ASINs at the identity tier. | ~1 per returned candidate (≈1/code typical) |
 | `get_product_chart` | Fetch a price/BSR history PNG chart for one ASIN on one marketplace. | 1 flat per call (Keepa 90-min server cache) |
 | `check_token_balance` | Show current Keepa token balance, refill rate, and cache-aware per-tool cost projections. | 0 (local) |
-| `check_job_status` | Check or list background jobs created when a call hit a Keepa rate-limit wait. | 0 (local) |
+| `check_job_status` | Check, list, or cancel background jobs created when a call hit a Keepa rate-limit wait; pending status shows queue position + token-wait ETA. | 0 (local) |
 | `get_finder_result` | Page through ASINs from a stored finder result set by id. | 0 (local) |
 | `get_cross_border_result` | Retrieve a cached cross-border analysis by id, or list recent ones. | 0 (local) |
 | `get_codes_result` | Page through a stored code-resolution result set (the per-row candidate table). | 0 (local) |
@@ -549,13 +549,17 @@ with `get_cross_border_result`.
 
 - **500 ASINs per call, hard maximum.**
 - **Rate-limit / async path.** A call runs synchronously as long as the
-  token bucket has capacity for the preflight reservation (worst-case
-  `12 × source_asins` tokens). When the bucket can't satisfy the
+  token bucket has capacity for the preflight reservation. The
+  reservation is **cache-aware**: a source product already in cache
+  drops its source-fetch charge, so a partially-cached batch reserves —
+  and the fundable-gate ETA reflects — the lower actual cost rather than
+  the worst-case `12 × source_asins`. When the bucket can't satisfy the
   reservation, the call enqueues a `cross_border` background job and
   returns a `jobId`. Poll with `check_job_status`, then retrieve results
   with `get_cross_border_result`. **Rough sizing on the default 20 TPM
-  Keepa plan (capacity 1,200 tokens): ~100 source ASINs is the inline
-  ceiling**; higher TPM plans push it much higher.
+  Keepa plan (capacity 1,200 tokens): ~100 fully-uncached source ASINs
+  is the inline ceiling**; cached batches and higher TPM plans push it
+  much higher.
 - **Exchange rates** are baked-in approximations suitable for spotting
   arbitrage opportunities. Not suitable for forex or accounting.
   `exchangeRateDate` in the summary indicates when rates were last
@@ -781,8 +785,11 @@ Three call modes:
 
 ### Notes
 
-- Cached ASINs cost 0 tokens for single-domain lookups; cross-border
-  ignores source cache (target fetches go to a different domain).
+- Cached ASINs cost 0 tokens for single-domain lookups. Cross-border is
+  cache-aware on the **source** side — a cached source product drops its
+  source-fetch charge, so a partially-cached batch is quoted (and funded)
+  at the lower actual price; only uncached source pulls plus the target
+  fetches are charged.
 - For lookups >100 ASINs, expect to be queued on the default 20 TPM
   plan.
 
@@ -800,6 +807,7 @@ Keepa rate limits forced the work onto the background queue.
   until completion, then re-call the original tool to fetch the result
   at 0 tokens from cache.
 - Survey in-flight or recent jobs with `action='list'`.
+- Cancel a queued job that hasn't started yet with `action='cancel'`.
 - The user mentions a job without providing the ID — `list` first to
   discover the jobId, then proceed.
 
@@ -812,32 +820,41 @@ Keepa rate limits forced the work onto the background queue.
 - **`list`** — Show all recent jobs with IDs, kinds, and statuses. No
   `jobId` required.
 - **`status`** (default) — Report the current status of a specific job:
-  `pending`, `running`, `completed`, or `failed`.
-- **`cancel`** — **Not supported.** Returns an error. Restart the MCP
-  server to abandon in-flight jobs.
+  `pending`, `running`, `completed`, `cancelled`, or `failed`.
+- **`cancel`** — Abandon a **pending** job that has not started yet
+  (requires a `jobId`). A job already `running` is left to finish on its
+  own — cancel only applies before execution begins.
 
 ### Status values
 
-- **`pending`** — Job is waiting for tokens or a free runner slot.
+- **`pending`** — Waiting for tokens or a free runner slot. The status
+  response reports the job's **position** in the queue, the **token
+  level it must reach** before it can start, and a **refill-based ETA**.
 - **`running`** — Job is currently executing.
 - **`completed`** — Finished successfully.
+- **`cancelled`** — Abandoned via `action='cancel'` before it started.
+  Reported distinctly from `failed` — a cancellation is not an error.
 - **`failed`** — Encountered an error. Status response carries the error
   message.
 
 ### What it returns
 
 - **`list`** — Count of recent jobs plus one line per job: `jobId`,
-  kind, status, attempt count, creation timestamp.
-- **`status`** — Status message. **On `completed`, the message appends
-  provenance guidance pointing at the retrieval tool + id needed to
-  fetch the result at 0 tokens.** The raw job payload is not echoed
-  inline — treat the guidance as a fetch instruction. The retrieval
-  hand-off looks like a `[handle:]` / `[partial:]` finder bracket for
-  finder jobs (same convention as sync finder output), a `resultSetId`
-  hand-off for lookup / screen jobs, or a `crossBorderResultId` hand-off
-  for cross-border jobs — re-call the named tool with the named id to
-  pull the actual result.
-- **`cancel`** — Always errors (not supported in this MCP build).
+  kind, status, attempt count, creation timestamp. A cancelled job is
+  labelled cancelled, not failed.
+- **`status`** — Status message. A `pending` reply includes the queue
+  position, the token level the job is waiting for, and a refill-based
+  ETA. **On `completed`, the message appends provenance guidance
+  pointing at the retrieval tool + id needed to fetch the result at 0
+  tokens.** The raw job payload is not echoed inline — treat the
+  guidance as a fetch instruction. The retrieval hand-off looks like a
+  `[handle:]` / `[partial:]` finder bracket for finder jobs (same
+  convention as sync finder output), a `resultSetId` hand-off for
+  lookup / screen jobs, or a `crossBorderResultId` hand-off for
+  cross-border jobs — re-call the named tool with the named id to pull
+  the actual result.
+- **`cancel`** — Confirms the pending job was cancelled, or explains why
+  it could not be (already running, already finished, or unknown id).
 
 ### Notes
 
@@ -845,9 +862,13 @@ Keepa rate limits forced the work onto the background queue.
   (`execute_keepa_finder`, `screen_products`, `get_product_details`,
   `resolve_cross_border`) hits a Keepa rate-limit wait.
 - Jobs expire after **24 hours**.
-- If token replenishment is required for a `pending` job, the assistant
-  surfaces the wait time and offers refinement options (smaller subset,
-  tighter filters, save for later).
+- Resubmitting an **identical** request while a matching job is still
+  `pending` or `running` reuses that job instead of creating a duplicate
+  that would double-spend tokens.
+- If token replenishment is required for a `pending` job, the status
+  surfaces its queue position, the token level it's waiting for, and a
+  refill-based ETA, and the assistant offers refinement options (smaller
+  subset, tighter filters, save for later).
 
 ---
 
