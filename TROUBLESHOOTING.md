@@ -1,7 +1,7 @@
 # Troubleshooting
 
 First-install behavior, log locations, and the handful of things most
-likely to go sideways on your first run of agellic-mcp v1.1.0.
+likely to go sideways on your first run of agellic-mcp v1.4.0.
 
 ## 1. First-install behavior: what to expect
 
