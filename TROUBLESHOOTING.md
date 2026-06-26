@@ -3,7 +3,7 @@
 First-install behavior, log locations, and the handful of things most
 likely to go sideways on your first run of agellic-mcp v1.1.0.
 
-## 1. First-install behavior — what to expect
+## 1. First-install behavior: what to expect
 
 A brand-new install on a fresh machine boots the server in
 **configuration-pending mode**. This is normal and expected. Here's what
@@ -15,7 +15,7 @@ After you drag `agellic-mcp.mcpb` into Settings → Extensions:
 
 1. The credential form appears asking for your **license token**, your
    **Keepa API key**, and a **tokens-per-minute** value (default `20`).
-2. The extension shows as **connected** — no red banner, no error icon.
+2. The extension shows as **connected**, no red banner, no error icon.
 3. Exactly **one tool** is visible in the tool list: `_configure_agellic`.
    Ask Claude "what tools do you have?" and it will surface this
    placeholder along with a description of what to enter and where.
@@ -25,7 +25,7 @@ After you drag `agellic-mcp.mcpb` into Settings → Extensions:
 
 You should **not** see a red `Agellic could not find a valid license`
 banner on a brand-new install. If you do, the configuration-pending
-detection didn't fire — see [error #1](#1-red-could-not-find-a-valid-license-banner-on-a-brand-new-install)
+detection didn't fire. See [error #1](#1-red-could-not-find-a-valid-license-banner-on-a-brand-new-install)
 below.
 
 ### Claude Code
@@ -39,9 +39,9 @@ After you `unzip agellic-mcp.zip` and run `node install.mjs`:
    node install.mjs --license <token> --keepa-key <key> --tpm 20
    ```
 3. The installer probes the server with your credentials before writing
-   the MCP config entry — if something is wrong (bad license, bad Keepa
+   the MCP config entry, if something is wrong (bad license, bad Keepa
    key) you'll see the error immediately, not on first tool call.
-4. There is no placeholder mode on Claude Code — either the install
+4. There is no placeholder mode on Claude Code: either the install
    completes with all 11 tools available, or it fails with a specific
    error you can act on.
 
@@ -75,9 +75,9 @@ log excerpts into a support email without leaking secrets.
 
 Two environment variables raise the log ceiling:
 
-- `AGELLIC_LOG_LEVEL` — one of `error | warn | info | debug`
+- `AGELLIC_LOG_LEVEL`: one of `error | warn | info | debug`
   (default `info`).
-- `AGELLIC_LOG_DEBUG` — comma-separated list of module names to
+- `AGELLIC_LOG_DEBUG`: comma-separated list of module names to
   elevate to debug, e.g. `tool-call,token-bucket`. Useful when you
   want debug detail from just one subsystem without the firehose.
 
@@ -98,7 +98,7 @@ anything.
 **Cause:** The configuration-pending detection didn't fire. The server
 handles a Claude Desktop quirk where unsubstituted `${user_config.X}`
 placeholders are passed as **literal text** (not empty string) when the
-credential form is blank — this is defended against in current code.
+credential form is blank. This is defended against in current code.
 
 **Remedy:** Open `~/Library/Logs/Claude/mcp-server-agellic.log` (macOS)
 or `%APPDATA%\Claude\Logs\mcp-server-agellic.log` (Windows) and search
@@ -115,11 +115,11 @@ your Keepa key works on the Keepa dashboard but fails here.
 **Cause:** Claude Desktop's credential form has two paste-time
 mutations that affect long string values:
 
-- **Fields marked `sensitive: true`** (license token, Keepa key) —
+- **Fields marked `sensitive: true`** (license token, Keepa key),
   values get soft-wrapped at roughly 76 columns, with `\n` characters
   inserted at the wrap points.
 - **Fields marked `sensitive: false`** (rarely used here, but possible
-  for future settings) — newlines are stripped from pasted multi-line
+  for future settings), newlines are stripped from pasted multi-line
   content, which destroys things like PEM-encoded keys.
 
 Both are upstream Claude Desktop bugs, not agellic bugs. The server
@@ -129,7 +129,7 @@ the env-read boundary before any signature validation runs.
 **Remedy:** Most paste-time mangling is silently corrected by the
 server. If you're still seeing a `signature does not match this build`
 error after a clean re-paste, the defense may not have engaged on your
-machine — capture the log and file an issue.
+machine. Capture the log and file an issue.
 
 ### 3. `AGELLIC_LICENSE signature does not match this build`
 
@@ -141,7 +141,7 @@ agellic-mcp than the one you're trying to run. This usually means
 you're on an older license + newer build (or vice versa).
 
 **Remedy:** Email `support@agellic.com` with your purchase email
-address — we'll re-mint the license against the build you're running.
+address. We'll re-mint the license against the build you're running.
 
 ### 4. `AGELLIC_LICENSE has expired` or `covers versions released before …`
 
@@ -164,15 +164,15 @@ value is below the supported minimum.
 **Cause:** Your Keepa subscription tier doesn't allocate enough
 tokens-per-minute to sustain agellic's tool surface. The floor is `20`
 because Keepa's free/inactive-account refill rate is too low for the
-server to make useful progress — most multi-ASIN workflows would never
+server to make useful progress: most multi-ASIN workflows would never
 finish on a sub-20 TPM bucket.
 
 **Remedy:** Upgrade your Keepa subscription to a tier that supports at
-least 20 TPM, or — if your tier actually supports a higher value but
-you've configured TPM too low — set the env var explicitly to a higher
+least 20 TPM, or, if your tier actually supports a higher value but
+you've configured TPM too low, set the env var explicitly to a higher
 number. The default `20` is the floor, not the cap.
 
-### 6. Token bucket exhausted — `wait <N> minutes`
+### 6. Token bucket exhausted: `wait <N> minutes`
 
 **Symptom:** A tool call returns a `wait <N> minutes` error or you see
 `token-bucket: exhausted` in the agellic log.
@@ -186,7 +186,7 @@ refill, or raise the ceiling by setting `AGELLIC_MCP_TOKENS_PER_MINUTE`
 to match your real Keepa subscription tier.
 
 For larger lookups (more than 100 ASINs), agellic queues a background
-job rather than blocking on the bucket — poll with `check_job_status`
+job rather than blocking on the bucket. Poll with `check_job_status`
 and the result will be ready when the bucket has refilled enough to
 process it. You don't need to manually re-issue the request.
 
@@ -198,7 +198,7 @@ connected, but the tool list shows fewer than 11 tools (or only
 
 **Cause:** Claude Desktop only re-reads its extension's tool list on
 cold start. A window close (Cmd+W on macOS, or the X button on Windows)
-doesn't count — the app process is still running.
+doesn't count: the app process is still running.
 
 **Remedy:** Fully quit Claude Desktop (**Cmd+Q on macOS**, or right-click
 the tray icon → Quit on Windows) and reopen. The full 11-tool set will
@@ -213,12 +213,12 @@ chat or Claude Code renders the chart fine.
 
 **Cause:** Cowork runs the agent inside a sandboxed VM that (a) doesn't
 paint inline `type: 'image'` content blocks for the user and (b) blocks
-reads of files written outside the session's allowed directories — so a
+reads of files written outside the session's allowed directories, so a
 host-saved chart PNG can't be reached either. The chart is generated
 successfully and the model still receives the image for analysis; only
 the inline display to the user is unavailable on this surface.
 
-**Remedy:** None on the agellic side — this is a Cowork sandbox
+**Remedy:** None on the agellic side. This is a Cowork sandbox
 constraint, not an agellic bug. In Cowork, use the data readout plus the
 Keepa product URL the tool returns (pair the chart request with
 `get_product_details` for a fuller picture). When you want the rendered
@@ -230,7 +230,7 @@ chart, use regular Claude Desktop chat or Claude Code.
 run, or finder), but `check_job_status` keeps reporting `pending` or
 `running` and the result never lands.
 
-**Cause:** Two normal, non-error reasons — usually one of:
+**Cause:** Two normal, non-error reasons, usually one of:
 
 - **Waiting for tokens.** A big job needs the Keepa bucket to refill
   enough capacity before it can run. On the default 20 TPM plan a
@@ -239,10 +239,10 @@ run, or finder), but `check_job_status` keeps reporting `pending` or
 - **The host isn't running.** The job runner lives inside the MCP server
   process, which only runs while Claude Desktop or Claude Code is open.
   Quit Claude or let the machine sleep/shut down and the queue stops
-  making progress — there is no cloud worker.
+  making progress: there is no cloud worker.
 
 **Remedy:** Leave a Claude app open and the machine awake; the job drains
-on its own as tokens refill. If you did quit, nothing is lost — the job's
+on its own as tokens refill. If you did quit, nothing is lost: the job's
 lease is reclaimed on the next launch and it resumes where it left off.
 Poll with `check_job_status`. There's no `cancel`; to abandon in-flight
 jobs, fully restart the MCP host.

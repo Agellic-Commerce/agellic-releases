@@ -7,7 +7,7 @@ rights reserved.
 
 This is an **early-access (limited) release** distributed free of
 charge to invited testers. The terms below replace any open-source
-license you may expect to find here — `agellic-mcp` is not open
+license you may expect to find here: `agellic-mcp` is not open
 source.
 
 ## 1. License grant
@@ -42,9 +42,9 @@ You may not:
 The Software is provided "AS IS" without warranty of any kind,
 express or implied. We do not warrant that the Software will be
 error-free, fit for any particular purpose, available at any given
-time, or that its outputs — including calibrated demand estimates,
+time, or that its outputs, including calibrated demand estimates,
 price gaps, cross-border matches, Buy Box rotations, or any other
-data the Software produces — are accurate, complete, or current.
+data the Software produces, are accurate, complete, or current.
 
 **This is early-access software.** Features may change, break, or be
 withdrawn without notice. Verify any output independently before relying
@@ -56,9 +56,9 @@ real consequences.
 To the fullest extent permitted by law, Agellic is not liable for any
 direct, indirect, incidental, consequential, special, punitive, or
 exemplary damages arising from your use of, or inability to use, the
-Software — including lost profits, lost data, business interruption,
+Software, including lost profits, lost data, business interruption,
 sourcing decisions based on Software output, or any other commercial
-losses — even if we have been advised of the possibility of such
+losses, even if we have been advised of the possibility of such
 damages.
 
 Because the Software is provided to you free of charge, our total
@@ -68,7 +68,7 @@ aggregate liability to you for any claim is capped at zero (USD 0).
 
 `agellic-mcp` calls Keepa's API using a Keepa API key that you
 supply. Your use of Keepa is governed by your own Keepa subscription
-and Keepa's terms of service — Agellic is not a party to that
+and Keepa's terms of service. Agellic is not a party to that
 relationship and does not warrant Keepa's availability, accuracy, or
 pricing.
 

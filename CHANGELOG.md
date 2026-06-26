@@ -5,11 +5,11 @@ All notable changes to agellic-mcp are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.4.0] — 2026-06-25
+## [1.4.0] - 2026-06-25
 
 Background jobs you can see into and cancel, token costs that account for what's
 already cached, cross-border comparisons that price in your cache before
-charging, and cleaner upgrades. Your existing v1.0.0 license token works as-is —
+charging, and cleaner upgrades. Your existing v1.0.0 license token works as-is,
 no reissue needed.
 
 ### Added
@@ -17,7 +17,7 @@ no reissue needed.
 - **The background-job queue is now visible.** When a call is rate-limited and
   queued, `check_job_status` shows the job's position in line, the token balance
   it's waiting to reach before it can start, and an ETA based on your Keepa
-  refill rate — so a queued screen or lookup is no longer a black box.
+  refill rate, so a queued screen or lookup is no longer a black box.
 - **You can cancel a queued job before it starts.** `check_job_status` with
   `action: "cancel"` abandons a pending job that hasn't begun. A job that has
   already started finishes on its own.
@@ -31,7 +31,7 @@ no reissue needed.
 - **Cross-border comparisons are cache-aware.** `resolve_cross_border` counts
   cached source products in its affordability check and ETA and only charges for
   the uncached ones, so a partially-cached batch gets an accurate, lower cost
-  estimate instead of being quoted — or made to wait for — the full price.
+  estimate instead of being quoted, or made to wait for, the full price.
 - **Duplicate requests collapse onto the one already in flight.** Submitting an
   identical request while a matching job is still queued or running now reuses
   that job instead of minting a second one that would double-spend tokens.
@@ -52,11 +52,11 @@ no reissue needed.
   are kept). A result id from before an upgrade now re-runs cleanly instead of
   silently re-charging against a stale cache.
 
-## [1.3.0] — 2026-06-23
+## [1.3.0] - 2026-06-23
 
 Sharper demand reads for products that only map to a broad department, plus a
 finder guardrail against wrong-marketplace category ids. Your existing v1.0.0
-license token works as-is — no reissue needed.
+license token works as-is, no reissue needed.
 
 ### Changed
 
@@ -69,32 +69,32 @@ license token works as-is — no reissue needed.
   read the same.
 - **The product finder catches wrong-marketplace category ids before spending
   tokens.** `execute_keepa_finder` rejects a category id that belongs to a
-  different Amazon marketplace than the one you're searching — a mistake that
+  different Amazon marketplace than the one you're searching, a mistake that
   used to slip through and return a plausible-but-wrong match count. It checks
   every category field (include, exclude, and the sales-rank reference), and the
   rejection costs zero tokens.
 
-## [1.2.0] — 2026-06-21
+## [1.2.0] - 2026-06-21
 
 Sharpens demand reads that come from velocity (rank-drops or reviews). Your
-existing v1.0.0 license token works as-is — no reissue needed.
+existing v1.0.0 license token works as-is, no reissue needed.
 
 ### Changed
 
 - **Velocity-based demand estimates are no longer understated.** When a demand
   read is built from rank-drop or review velocity rather than a direct category
   match, the per-category conversion rates were anchored to Keepa's censored
-  "50+/mo" badge floor, which quietly pushed those estimates too low — most of
+  "50+/mo" badge floor, which quietly pushed those estimates too low, most of
   all for the ~40% of products sitting right at that floor. The rates now use
   the middle of each Keepa badge band instead, lifting typical velocity-based
   estimates by roughly 1.3–1.4×. Direct category-table reads are unchanged, so
   most products read the same; the lift shows up on low-volume and
   thinner-category products.
 
-## [1.1.0] — 2026-06-21
+## [1.1.0] - 2026-06-21
 
 Corrects the demand read for low-volume products. Your existing v1.0.0
-license token works as-is — no reissue needed.
+license token works as-is, no reissue needed.
 
 ### Changed
 
@@ -112,33 +112,33 @@ license token works as-is — no reissue needed.
 
 ### Fixed
 
-- The sub-50 demand floor that could overstate slow sellers — the costly
+- The sub-50 demand floor that could overstate slow sellers, the costly
   direction of error for a sourcing decision.
 
-## [1.0.0] — 2026-06-19
+## [1.0.0] - 2026-06-19
 
-First stable release. Graduates the `0.5.0-beta.*` series — the beta
+First stable release. Graduates the `0.5.0-beta.*` series: the beta
 designation is dropped from the version, docs, and license (the
 distribution model is unchanged: a free, invited, revocable license).
 Highlights since `0.5.0-beta.4`:
 
 ### Added
 
-- **Two new tools — `resolve_codes` and `get_codes_result`** — bulk
+- **Two new tools, `resolve_codes` and `get_codes_result`**, bulk
   resolve UPC / EAN / GTIN codes to candidate ASINs from a supplier
   manifest (up to 500 rows), with a cached per-row candidate table you
   page through. The tool surface grows from **9 to 11**.
 - **Inline Keepa charts in Claude Desktop chat and Claude Code.**
   `get_product_chart` now renders the price/BSR chart inline, and the
   model receives the same image so it can analyse the chart and answer
-  follow-ups. (Cowork still shows text + URL only — see TROUBLESHOOTING.)
+  follow-ups. (Cowork still shows text + URL only: see TROUBLESHOOTING.)
 - **Cost receipts + category echo** on `execute_keepa_finder` and the
-  cross-border tools — each result reports the Keepa tokens it consumed.
+  cross-border tools: each result reports the Keepa tokens it consumed.
 - **`screen_products` Title + Brand columns** in the screen output.
 
 ### Changed
 
-- **Demand model recalibrated** — a reported demand badge is treated as
+- **Demand model recalibrated**: a reported demand badge is treated as
   truth, a new engine replaces the older heuristic, and cross-marketplace
   fallbacks demote to a no-read rather than guessing.
 - **`get_product_details` output ~50% smaller** with no loss of signal.
@@ -149,7 +149,7 @@ Highlights since `0.5.0-beta.4`:
   and a broad correctness + hardening pass across demand, insights, and
   analytics.
 
-## [0.5.0-beta.4] — 2026-05-25
+## [0.5.0-beta.4] - 2026-05-25
 
 ### Added
 
@@ -168,7 +168,7 @@ Highlights since `0.5.0-beta.4`:
 ### Changed
 
 - **Refreshed the bundled exchange-rate defaults to 2026-05-22 ECB rates**
-  (were 2026-04-09) — the zero-config fallback used when no
+  (were 2026-04-09), the zero-config fallback used when no
   `exchange-rates.json` override is present.
 
 ### Fixed
@@ -176,7 +176,7 @@ Highlights since `0.5.0-beta.4`:
 - **Claude Desktop now inherits the per-machine Keepa tokens-per-minute
   instead of silently defaulting to 20.** The `.mcpb` manifest gave the
   tokens-per-minute field a `default: 20`, so Claude Desktop always injected
-  `20` even when the field was left blank — overriding the per-machine value
+  `20` even when the field was left blank, overriding the per-machine value
   configured elsewhere (e.g. `60` from Claude Code) and throttling CD-only
   users on higher Keepa tiers to the 20-tier rate. The field now matches the
   license/key fields: leave it blank to inherit from the shared credential
@@ -188,25 +188,25 @@ Highlights since `0.5.0-beta.4`:
   `0.5.0-beta.1`, so the startup log and the version handed to Claude
   Desktop / Claude Code identified the server as `beta.1`. It is now derived
   from the package version at build time and can no longer drift. No change
-  to behavior — this only corrects the version shown in logs and used for
+  to behavior: this only corrects the version shown in logs and used for
   support diagnostics. (The `beta.4` download was re-cut to include this fix;
   re-download if you installed before 2026-05-25.)
 
-## [0.5.0-beta.3] — 2026-05-23
+## [0.5.0-beta.3] - 2026-05-23
 
 ### Fixed
 
 - **Claude Code installer's credential-cache write step decoded the
   license token as a 3-part JWT.** Agellic licenses are a 2-part
   `<base64url-payload>.<base64url-signature>` envelope (ed25519, not
-  JWT — see `src/license/verify.ts`). The decode in beta.2 rejected
+  JWT: see `src/license/verify.ts`). The decode in beta.2 rejected
   every real license with `malformed license token (expected 3 JWT
   parts)` and skipped the cache write, defeating the headline fix
   from beta.2 (the CC-first → CD-second credential handoff). The
   decode now matches the real format and includes a whitespace-strip
   pass for parity with the server's verifier.
 
-## [0.5.0-beta.2] — 2026-05-23
+## [0.5.0-beta.2] - 2026-05-23
 
 ### Fixed
 
@@ -225,7 +225,7 @@ Highlights since `0.5.0-beta.4`:
   after the probe validates credentials, so CC-first → CD-second picks
   up credentials from cache too.
 
-## [0.5.0-beta.1] — 2026-05-22
+## [0.5.0-beta.1] - 2026-05-22
 
 ### Added
 
@@ -235,7 +235,7 @@ Highlights since `0.5.0-beta.4`:
   Both files are byte-identical; just two filenames so each host's unzip
   tool recognises the extension.
 - **Bundled Claude Code installer.** `install.mjs` ships inside the
-  release artifact at root. After `unzip`, run `node install.mjs` — no
+  release artifact at root. After `unzip`, run `node install.mjs`: no
   source checkout, no `pnpm install`. Auto-discovers the sibling
   `./server/server.js` bundled in the same artifact.
 
@@ -256,7 +256,7 @@ Highlights since `0.5.0-beta.4`:
   Configured-but-broken paths (`NoCredentialsError`,
   `LicenseBootError`) propagate as today.
 
-## [0.4.0] — 2026-05-22
+## [0.4.0] - 2026-05-22
 
 ### Added
 
@@ -272,7 +272,7 @@ Highlights since `0.5.0-beta.4`:
 ### Fixed
 
 - **OOS products no longer force-miss the cache.** `hasOffers` semantics
-  changed from "got non-empty offers" to "we requested offers" — an
+  changed from "got non-empty offers" to "we requested offers": an
   empty offers array now satisfies subsequent `needsOffers` requests,
   saving 9 Keepa tokens per OOS lookup.
 
@@ -293,7 +293,7 @@ Highlights since `0.5.0-beta.4`:
 
 - (earlier; pre-changelog cutover.)
 
-## [0.2.0] — 2026-05-15
+## [0.2.0] - 2026-05-15
 
 ### Added
 
