@@ -172,7 +172,7 @@ Calibrated cell + multiplier tables exist only for **US (domain 1)** and **CA (d
 
 Instead it returns `no-read`:
 
-- with `reason: 'cross-marketplace'` plus a rough hint caveat (`rough cross-marketplace velocity hint: ~N/mo, extrapolated baseline, not a sales figure`) when there is drops or review activity, sized off CA bottom-quartile multipliers (one step under CA's median, itself ~50% of US, asymmetric conservatism: lean low);
+- with `reason: 'cross-marketplace'` plus a rough hint caveat (`rough cross-marketplace velocity hint: ~N/mo — extrapolated baseline, not a sales figure`) when there is drops or review activity, sized off CA bottom-quartile multipliers (one step under CA's median, itself ~50% of US, asymmetric conservatism: lean low);
 - with `reason: 'no-activity'` when there are no recent drops or reviews.
 
 Every cross-domain output also carries `estimate from cross-marketplace baseline; we lack data for this domain`. When a third domain (likely UK) gets calibrated cell data, these constants get re-derived.
