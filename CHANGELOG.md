@@ -5,6 +5,40 @@ All notable changes to agellic-mcp are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2026-07-04
+
+Accurate token pricing from the very first call, token accounting that tracks
+Keepa's real refill rate, and clearer guidance when a batch is too big or your
+budget has run dry. Your existing v1.0.0 license token works as-is, no reissue
+needed.
+
+### Changed
+
+- **First-call token pricing is now accurate from a cold start.** At startup the
+  server runs a free check of your Keepa token balance and aligns its local
+  budget to it, so the very first cost estimate and funding decision match what
+  Keepa will actually charge instead of assuming a full budget. The check runs
+  after the connection is live, so it never delays startup.
+- **Token accounting tracks Keepa's real refill rate.** The local token budget
+  now refills and reconciles at the effective rate your Keepa key actually earns
+  each minute, so cost estimates and wait times stay in step with what Keepa
+  does rather than drifting optimistic.
+- **Oversized batches and an empty budget now give you a next step.** When a
+  request is larger than a tool's per-call cap, the message names the specific
+  tool and limit to fall back to for that kind of request. When your token rate
+  is effectively zero, the message names the reconnect step that recovers it
+  instead of leaving you to wait indefinitely.
+
+### Fixed
+
+- **The balance estimator stops advising waits that can never finish.** A cost
+  estimate for a batch bigger than your budget could ever hold used to suggest
+  "wait N minutes," a wait that would never come true. It now recognises an
+  impossible-to-fund request and tells you to split it instead.
+- **The startup balance probe is hardened.** It follows a strict internal event
+  contract and can never block or fail a boot, so it stays a quiet background
+  accuracy step rather than a startup risk.
+
 ## [1.4.0] - 2026-06-25
 
 Background jobs you can see into and cancel, token costs that account for what's
