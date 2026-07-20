@@ -1,7 +1,7 @@
 # Install guide
 
-How to install, upgrade, and uninstall `agellic-mcp` in Claude Desktop
-and Claude Code.
+How to install, upgrade, and uninstall `agellic-mcp` in Claude Desktop,
+Claude Code, and Codex (Codex CLI + the ChatGPT desktop app).
 
 For things that can go wrong, see [TROUBLESHOOTING.md](./TROUBLESHOOTING.md).
 For example prompts once installed, see [USAGE.md](./USAGE.md).
@@ -14,20 +14,23 @@ For example prompts once installed, see [USAGE.md](./USAGE.md).
   you joined the early-access program. Starts with `eyJ…`.
 - **A Keepa API key**: get one at
   [keepa.com/#!api](https://keepa.com/#!api).
-- **Node.js 22.22.2+ (LTS) or 24.15.0+** (Claude Code only, Claude
-  Desktop ships its own Node runtime). Node 20 reached end of life on
-  2026-04-30 and is no longer supported. If you're on older Node,
-  install a current LTS from
+- **Node.js 22.22.2+ (LTS) or 24.15.0+** (for the scripted installs:
+  Claude Code and Codex. Claude Desktop ships its own Node runtime).
+  Node 20 reached end of life on 2026-04-30 and is no longer supported.
+  If you're on older Node, install a current LTS from
   [nodejs.org/en/download](https://nodejs.org/en/download) (or via
   `nvm`, `fnm`, `volta`, etc.).
 - **One of:**
   - **Claude Desktop** (macOS or Windows, Linux is not supported by
     CD itself).
   - **Claude Code** (any platform: macOS, Linux, Windows).
+  - **Codex CLI and/or the ChatGPT desktop app** (they share one MCP
+    configuration; the scripted install also needs the `codex` CLI on
+    PATH, see [If `codex` is not installed](#if-codex-is-not-installed)).
 
-You can install into both hosts on the same machine. They share
-credentials at `~/.agellic-mcp/credentials.json` (mode 0600), after
-the first host is configured, the second host's install can leave
+You can install into any combination of hosts on the same machine. They
+share credentials at `~/.agellic-mcp/credentials.json` (mode 0600):
+after the first host is configured, the next host's install can leave
 credential fields blank and pick everything up from the cache. See
 [Where files live](#where-files-live).
 
@@ -128,14 +131,77 @@ prompts entirely.
 
 ### Canonical bin paths
 
-| OS | Path |
-|---|---|
-| macOS | `~/Library/Application Support/Agellic/` |
-| Windows | `%LOCALAPPDATA%\Agellic\` |
-| Linux | `$XDG_DATA_HOME/agellic/` (typically `~/.local/share/agellic/`) |
+| OS | Claude Code | Codex |
+|---|---|---|
+| macOS | `~/Library/Application Support/Agellic/` | `~/Library/Application Support/Agellic-Codex/` |
+| Windows | `%LOCALAPPDATA%\Agellic\` | `%LOCALAPPDATA%\Agellic-Codex\` |
+| Linux | `$XDG_DATA_HOME/agellic/` (typically `~/.local/share/agellic/`) | `$XDG_DATA_HOME/agellic-codex/` |
 
-The directory contains `server.js` + its runtime dependencies +
-`version.json` (install metadata).
+Each directory contains `server.js` + its runtime dependencies +
+`version.json` (install metadata). Each scripted host owns its own
+tree, so removing one host never breaks another.
+
+---
+
+## Install in Codex CLI + ChatGPT desktop
+
+Codex CLI, the ChatGPT desktop app, and the Codex IDE extension share
+one MCP configuration, managed by the `codex` CLI. The installer
+registers through it (it never edits `~/.codex/config.toml` by hand).
+
+Same unzipped release archive as the Claude Code install, one extra
+flag:
+
+```bash
+node install.mjs --host codex
+```
+
+What this does, in order:
+
+1. Installs the server tree to the **Codex-owned** bin path
+   (`Agellic-Codex`, see [Canonical bin paths](#canonical-bin-paths)).
+2. Probes the binary with a real MCP `initialize` round-trip before
+   touching any configuration.
+3. Writes the shared credential cache at
+   `~/.agellic-mcp/credentials.json` **strictly**: if this write fails,
+   the install stops and no Codex registration is made.
+4. Registers a **credential-free** entry via `codex mcp add`. Your
+   license and Keepa key never enter Codex configuration; the server
+   reads them from the shared cache at boot.
+
+Then restart Codex CLI sessions and/or the ChatGPT desktop app, run
+`codex mcp list` (expect `agellic`), and ask the assistant to call
+`check_token_balance`.
+
+### Second host on the same machine
+
+If any host already configured agellic on this machine, the shared
+cache makes the Codex install promptless:
+
+```bash
+node install.mjs --host codex --non-interactive
+```
+
+### If `codex` is not installed
+
+The installer still installs and probes the server tree and writes the
+credential cache, then exits with code 2 after printing two remedies,
+preferred first:
+
+1. Install the Codex CLI (see OpenAI's install instructions), then
+   re-run `node install.mjs --host codex`. Registration is idempotent,
+   so re-running is always safe, and the one command covers Codex CLI
+   and ChatGPT desktop because they share configuration.
+2. Or register manually in ChatGPT desktop: **Settings → MCP servers →
+   Add server**, choose **STDIO**, set the command to `node` with the
+   printed `server.js` path as its only argument, then restart the app.
+
+### Custom data dir
+
+If `AGELLIC_DATA_DIR` is set when you install, the installer records it
+in the Codex entry (the one env value that is ever written there):
+ChatGPT desktop doesn't inherit your shell environment, and every host
+must use the same data dir.
 
 ---
 
@@ -163,6 +229,35 @@ The upgrade uses a sibling staging directory and atomic renames: an
 interrupted upgrade leaves the previous install intact, never
 half-installed.
 
+An upgrade also clears the shared derived stores (cached products,
+result sets, and the job queue; credentials, rate-limit state, and
+exchange rates survive), so restart your other connected hosts after
+upgrading any one of them.
+
+### Codex
+
+```bash
+node install.mjs --host codex --upgrade
+```
+
+Same staged-promote mechanics and derived-store clearing, against the
+Codex-owned tree. Credentials come from the shared cache, and the
+registration is re-applied idempotently (which also heals a moved
+server path).
+
+### All hosts at once
+
+```bash
+node install.mjs --host all --upgrade
+```
+
+Detects which scripted hosts are installed (Claude Code, Codex) and
+upgrades each in turn with a per-host report. One host failing doesn't
+stop the sweep, but the exit code is nonzero. Claude Desktop is
+excluded: its upgrades ship via the `.mcpb` flow above. `--host all` is
+valid only with `--upgrade`; install and uninstall stay explicit per
+host.
+
 ---
 
 ## Refreshing exchange rates
@@ -188,7 +283,8 @@ write. This doesn't reinstall or upgrade anything; it only writes the
 rate file. Restart your Claude session to pick up the new rates.
 
 Because `~/.agellic-mcp/` is shared between hosts, a refresh run from
-Claude Code also applies to Claude Desktop on the same machine.
+Claude Code also applies to Claude Desktop and Codex on the same
+machine.
 
 ### Claude Desktop: limitation
 
@@ -211,36 +307,59 @@ for the ballpark comparison `resolve_cross_border` is designed for.
 
 Settings → Extensions → click the agellic extension → remove.
 
-### Claude Code
+### Claude Code and Codex
 
-Three levels of removal:
+Three levels of removal, per host. `--host claude-code` is the default;
+add `--host codex` to act on the Codex registration and tree instead.
 
-**Config only** (default): removes the `mcpServers.agellic` entry
-from `~/.claude.json`, leaves the binary + data dir in place:
+**Config only** (default): removes only that host's entry (the
+`mcpServers.agellic` entry in `~/.claude.json`, or the `agellic` entry
+in Codex configuration via `codex mcp remove`). Leaves the host's
+binary and the shared data dir in place. Use this to disable agellic
+in one host while keeping every other host installed:
 
 ```bash
 node install.mjs --uninstall
+node install.mjs --host codex --uninstall
 ```
 
-**Config + binary**: also removes the binary at the canonical bin
-path. Data dir preserved:
+**Config + binary**: also removes that host's own binary tree. Data
+dir preserved (your token bucket state, cached products, and result
+sets all stay). Other hosts' entries, trees, and shared data are
+untouched:
 
 ```bash
 node install.mjs --uninstall --remove-bin
+node install.mjs --host codex --uninstall --remove-bin
 ```
 
-**Full purge**, removes everything: config entry, binary, AND
+**Full purge**: removes everything the acting host owns AND
 `~/.agellic-mcp/` (credential cache, cached products, logs, jobs):
 
 ```bash
 node install.mjs --uninstall --purge
 ```
 
-The full purge **refuses by default if the Claude Desktop extension
-is still installed**: the data dir is shared between hosts, and
-purging while CD is active would corrupt CD's runtime state.
-Uninstall CD first, or pass `--force` to override (only do this if
-you understand the consequences).
+The full purge **refuses by default while any other host is still
+installed** (Claude Desktop, Claude Code, or Codex; the refusal names
+them). The data dir is shared, and purging it under a live host would
+corrupt that host's runtime state. The order that always works, no
+`--force` needed:
+
+1. Run `--uninstall` (or `--uninstall --remove-bin`) for each other
+   host first. Those never touch shared data, so they are never
+   blocked.
+2. Run `--uninstall --purge` from the last remaining host. It finds
+   no other presence and proceeds.
+
+`--force` overrides the refusal if you understand the consequences.
+
+If the `codex` CLI is missing during a Codex uninstall: config-only
+`--uninstall` changes nothing (removing the entry needs the CLI) and
+prints the manual removal command. `--remove-bin` and `--purge` still
+perform their filesystem removals and print the same manual step for
+the config entry, so a leftover Codex tree never blocks the purge
+ordering above.
 
 ### Uninstall gotchas
 
@@ -252,21 +371,26 @@ unzipped `agellic-install/` folder, you have nothing to run
 unzip it, and run `node install.mjs --uninstall` (add `--remove-bin` or
 `--purge`) from there, or remove agellic by hand:
 
-1. Delete the `mcpServers.agellic` entry from `~/.claude.json`.
-2. Delete the canonical bin directory: macOS
-   `~/Library/Application Support/Agellic/`, Windows `%LOCALAPPDATA%\Agellic\`
-   (see [Canonical bin paths](#canonical-bin-paths)).
+1. Delete the `mcpServers.agellic` entry from `~/.claude.json` (Claude
+   Code), and/or run `codex mcp remove agellic` (Codex; or remove the
+   server in ChatGPT desktop → Settings → MCP servers).
+2. Delete the canonical bin directories you installed (see
+   [Canonical bin paths](#canonical-bin-paths)): macOS
+   `~/Library/Application Support/Agellic/` and
+   `~/Library/Application Support/Agellic-Codex/`, Windows
+   `%LOCALAPPDATA%\Agellic\` and `%LOCALAPPDATA%\Agellic-Codex\`.
 3. Optionally `rm -rf ~/.agellic-mcp` to remove the shared data dir
    (see [Where files live](#where-files-live)).
 
-**Quit Claude Desktop and Claude Code before `--purge`.** The purge
+**Quit every host before `--purge`** (Claude Desktop, Claude Code
+sessions, Codex CLI sessions, and the ChatGPT desktop app). The purge
 deletes `~/.agellic-mcp/`, but a server process that's still running
 recreates `~/.agellic-mcp/jobs/…` on its next job-queue tick, so the
 data dir can reappear seconds after the purge reports success. On macOS
 a Claude Desktop extension can keep running from memory even after you
 remove it in Settings, so quit Claude Desktop fully (not just close the
 window). If you already purged and `~/.agellic-mcp/` came back, quit
-both hosts and `rm -rf ~/.agellic-mcp` once more.
+every host and `rm -rf ~/.agellic-mcp` once more.
 
 ---
 
@@ -275,9 +399,10 @@ both hosts and `rm -rf ~/.agellic-mcp` once more.
 | Location | What lives there |
 |---|---|
 | `~/.claude.json` | `mcpServers.agellic` entry (Claude Code only): license + Keepa key + TPM in the env block, mode 0600 |
-| `~/.agellic-mcp/credentials.json` | Shared per-machine credential cache (mode 0600). Both hosts read; written after every successful server boot AND after every successful installer probe |
+| `~/.codex/config.toml` | `agellic` entry (Codex hosts): credential-free, written via `codex mcp add`, never hand-edited by the installer. `AGELLIC_DATA_DIR` is the only env value ever recorded there |
+| `~/.agellic-mcp/credentials.json` | Shared per-machine credential cache (mode 0600). All hosts read; written after every successful server boot AND after every successful installer probe |
 | `~/.agellic-mcp/exchange-rates.json` | Optional FX-rate override for `resolve_cross_border`, written by `--refresh-rates` (Claude Code). Shared between hosts; absent = bundled defaults. Mode 0644 (rates aren't secret) |
-| Canonical bin path | `server.js` + dependencies + `version.json` (Claude Code only) |
+| Canonical bin paths | `server.js` + dependencies + `version.json`, one tree per scripted host: `Agellic` (Claude Code), `Agellic-Codex` (Codex) |
 | CD extension dir | Same server tree, managed by Claude Desktop (Claude Desktop only) |
 | `~/.agellic-mcp/` | Shared data dir: credential cache, cached products, result sets, token bucket state, job queue, logs |
 
@@ -307,12 +432,15 @@ own per-server log at `~/Library/Logs/Claude/mcp-server-agellic.log`
 
 ## Verifying an install
 
-Ask Claude (in either host) to call **`check_token_balance`**. This
+Ask the assistant (in any host) to call **`check_token_balance`**. This
 exercises the license check, Keepa key load, and storage layer
 without spending any Keepa tokens.
 
 If `check_token_balance` returns your current balance and refill rate,
 the install is healthy.
+
+For Codex hosts you can also check the registration first from a
+terminal: `codex mcp list` should show `agellic` as enabled.
 
 If it fails, see [TROUBLESHOOTING.md](./TROUBLESHOOTING.md): the
 error message names the specific failure mode.

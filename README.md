@@ -6,8 +6,9 @@ bulk screening, powered by your own [Keepa](https://keepa.com/) key.
 
 agellic is a local [Model Context Protocol](https://modelcontextprotocol.io)
 (MCP) server, so it runs in any MCP-compatible assistant. Today it ships
-with one-click installers for **Claude Desktop** and **Claude Code**,
-with more hosts as the MCP ecosystem grows.
+with one-click installers for **Claude Desktop**, **Claude Code**, and
+**Codex** (Codex CLI + the ChatGPT desktop app), with more hosts as the
+MCP ecosystem grows.
 
 > Source code lives in the private `Agellic-Commerce/agellic-mcp` repo;
 > this repo hosts the published release artifacts.
@@ -52,9 +53,10 @@ criteria. No filter-form wrangling.
 window (cheaper, faster, sharper answers), plus price/BSR charts the
 model can actually see and read.
 
-**One paste, set up once.** Runs in Claude Desktop
-and Claude Code today, configure once per machine (shared credentials), with
-category + demand calibration data bundled in, no extra downloads.
+**One paste, set up once.** Runs in Claude Desktop, Claude Code, and
+Codex (CLI + ChatGPT desktop) today, configure once per machine (shared
+credentials), with category + demand calibration data bundled in, no
+extra downloads.
 
 ## Latest release
 
@@ -62,11 +64,12 @@ category + demand calibration data bundled in, no extra downloads.
 
 ## Which file do I download?
 
-| Host                             | File               | Recipe                                |
-| -------------------------------- | ------------------ | ------------------------------------- |
-| Claude Desktop (macOS / Windows) | `agellic-mcp.mcpb` | Drag into CD → Settings → Extensions  |
-| Claude Code (macOS / Linux)      | `agellic-mcp.zip`  | `unzip` + `node install.mjs`          |
-| Claude Code (Windows)            | `agellic-mcp.zip`  | `Expand-Archive` + `node install.mjs` |
+| Host                             | File               | Recipe                                       |
+| -------------------------------- | ------------------ | -------------------------------------------- |
+| Claude Desktop (macOS / Windows) | `agellic-mcp.mcpb` | Drag into CD → Settings → Extensions         |
+| Claude Code (macOS / Linux)      | `agellic-mcp.zip`  | `unzip` + `node install.mjs`                 |
+| Claude Code (Windows)            | `agellic-mcp.zip`  | `Expand-Archive` + `node install.mjs`        |
+| Codex CLI / ChatGPT desktop      | `agellic-mcp.zip`  | `unzip` + `node install.mjs --host codex`    |
 
 Both files are **byte-identical**; just two filenames so each host's
 unzip tool recognises the extension.
@@ -75,13 +78,15 @@ unzip tool recognises the extension.
 
 - **Agellic license token**: from the email
 - **Keepa API key**: get one at [keepa.com/#!api](https://keepa.com/#!api)
-- **Node.js 22.22.2+ or 24.15.0+** (Claude Code only: Claude Desktop ships
-  its own Node runtime)
+- **Node.js 22.22.2+ or 24.15.0+** (Claude Code and Codex installs:
+  Claude Desktop ships its own Node runtime)
+- **Codex path only**: the `codex` CLI on PATH (the installer prints
+  manual ChatGPT desktop steps if it's missing)
 
 ## Documentation
 
-- [**Install guide**](./INSTALL.md): requirements, step-by-step for CD
-  and CC, plus upgrade and uninstall.
+- [**Install guide**](./INSTALL.md): requirements, step-by-step for
+  Claude Desktop, Claude Code, and Codex, plus upgrade and uninstall.
 - [**Tool reference**](./TOOLS.md): the 11 tools, what each one does, and
   what it costs in Keepa tokens.
 - [**Usage examples**](./USAGE.md): example prompts to try first.
