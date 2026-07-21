@@ -77,9 +77,10 @@ You should **not** see a red "could not find a valid license" banner
 on a brand-new install. If you do, see
 [TROUBLESHOOTING.md → error #1](./TROUBLESHOOTING.md#1-red-could-not-find-a-valid-license-banner-on-a-brand-new-install).
 
-If you already configured agellic in Claude Code on this machine,
-leave the license and Keepa fields **blank** in the CD form: they
-will be filled from the per-machine credential cache automatically.
+If you already configured agellic in Claude Code or Codex on this
+machine, leave the license and Keepa fields **blank** in the CD form:
+they will be filled from the per-machine credential cache
+automatically.
 
 ---
 
@@ -117,17 +118,29 @@ The installer:
 - Copies the server tree to the **canonical bin path** for your OS
   (see below) using a staging directory and atomic renames.
 - Writes credentials to the per-machine cache at
-  `~/.agellic-mcp/credentials.json` so a subsequent Claude Desktop
-  install can leave its credential fields blank.
+  `~/.agellic-mcp/credentials.json` so a later install into any other
+  host (Claude Desktop's form, or a Codex install) can leave its
+  credential fields blank.
 - Merges an `mcpServers.agellic` entry into `~/.claude.json`.
 
 Restart Claude Code (`/restart` or quit the process) to pick up the
 new MCP server. The 11 Agellic tools appear in the next session.
 
-If you already configured agellic in Claude Desktop on this machine,
-run `node install.mjs --non-interactive`: the installer reads
-credentials from `~/.agellic-mcp/credentials.json` and skips the
-prompts entirely.
+### Adding Claude Code as a second host
+
+Already configured agellic in Codex or Claude Desktop on this machine?
+Run the installer again from **inside the unzipped `agellic-install`
+folder** (the folder the first scripted install ran from). The shared
+credential cache makes it promptless:
+
+```bash
+node install.mjs --non-interactive
+```
+
+If you no longer have that folder (you deleted it, or your first
+install was the Claude Desktop `.mcpb`, which never used one),
+download and unzip the archive first (the steps at the top of this
+section), then run the command from inside `agellic-install`.
 
 ### Canonical bin paths
 
@@ -149,14 +162,40 @@ Codex CLI, the ChatGPT desktop app, and the Codex IDE extension share
 one MCP configuration, managed by the `codex` CLI. The installer
 registers through it (it never edits `~/.codex/config.toml` by hand).
 
-Same unzipped release archive as the Claude Code install, one extra
-flag:
+This section is self-contained: you do not need Claude Code or any
+other host installed first. If another host is already installed on
+this machine, skip to
+[Adding Codex as a second host](#adding-codex-as-a-second-host).
+
+### macOS / Linux
 
 ```bash
+curl -fsSL -O https://github.com/Agellic-Commerce/agellic-releases/releases/latest/download/agellic-mcp.zip
+unzip agellic-mcp.zip -d agellic-install
+cd agellic-install
 node install.mjs --host codex
 ```
 
-What this does, in order:
+### Windows (PowerShell)
+
+```powershell
+Invoke-WebRequest `
+  https://github.com/Agellic-Commerce/agellic-releases/releases/latest/download/agellic-mcp.zip `
+  -OutFile agellic-mcp.zip
+Expand-Archive agellic-mcp.zip agellic-install
+cd agellic-install
+node install.mjs --host codex
+```
+
+It is the same release archive as the Claude Code install (one
+archive covers every scripted host); `--host codex` is the only
+difference. On a machine with no agellic install yet, the installer
+prompts for your **Agellic license token**, **Keepa API key**, and
+**Tokens per minute**, exactly as in the Claude Code install (the
+same flags work too: `--license <token>`, `--keepa-key <key>`,
+`--tpm <integer>`).
+
+What the install does, in order:
 
 1. Installs the server tree to the **Codex-owned** bin path
    (`Agellic-Codex`, see [Canonical bin paths](#canonical-bin-paths)).
@@ -173,14 +212,21 @@ Then restart Codex CLI sessions and/or the ChatGPT desktop app, run
 `codex mcp list` (expect `agellic`), and ask the assistant to call
 `check_token_balance`.
 
-### Second host on the same machine
+### Adding Codex as a second host
 
-If any host already configured agellic on this machine, the shared
-cache makes the Codex install promptless:
+Already configured agellic in Claude Code or Claude Desktop on this
+machine? Run the installer again from **inside the unzipped
+`agellic-install` folder** (the folder the first scripted install ran
+from). The shared credential cache makes it promptless:
 
 ```bash
 node install.mjs --host codex --non-interactive
 ```
+
+If you no longer have that folder (you deleted it, or your first
+install was the Claude Desktop `.mcpb`, which never used one),
+download and unzip the archive first (the steps just above), then run
+the command from inside `agellic-install`.
 
 ### If `codex` is not installed
 
