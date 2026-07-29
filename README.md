@@ -94,6 +94,9 @@ unzip tool recognises the extension.
   Claude Desktop, Claude Code, and Codex, plus upgrade and uninstall.
 - [**Tool reference**](./TOOLS.md): the 11 tools, what each one does, and
   what it costs in Keepa tokens.
+- [**Computed insights**](./COMPUTED-INSIGHTS.md): the algorithms behind
+  every number `get_product_details` returns, including the calibrated
+  demand read, the seasonality detector, and the sell-price read.
 - [**Usage examples**](./USAGE.md): example prompts to try first.
 - [**Troubleshooting**](./TROUBLESHOOTING.md): first-install behavior,
   log locations, common errors.

@@ -75,9 +75,9 @@ where most of the screening value lives: the table is yours to slice.
 
 `get_product_details` on the 10 shortlisted ASINs. Returns the full
 per-product picture: individual seller offers, FBA vs FBM split,
-stock depth, Buy Box rotation, calibrated demand range, review
-velocity, OOS history, referral fees, IP risk signals. ~8 tokens per
-uncached ASIN.
+stock depth, Buy Box rotation, calibrated demand range, observed
+sell-price bands, seasonality confirmation, review velocity, OOS
+history, referral fees, IP risk signals. ~8 tokens per uncached ASIN.
 
 ## Deep-dive on a shortlist
 
