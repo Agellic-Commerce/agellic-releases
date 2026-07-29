@@ -23,6 +23,11 @@ plain English and get a judgment, not a CSV to squint at.
 **Demand Read.** A calibrated demand-estimation model: a real read on
 how a product moves, not just "BSR #14,000."
 
+**Sell-price read.** "What can I actually sell this for?" Observed
+sale-price bands (move-fast / market / stretch) built from the prices in
+force at inferred sale moments, plus where the current price sits inside
+them. The observed market, not a guess.
+
 **It won't torch your Keepa tokens.** Every call reports its token cost,
 balance is checked before spending, failed calls are refunded, and
 oversized jobs queue instead of erroring. Your metered quota is treated
@@ -100,7 +105,7 @@ unzip tool recognises the extension.
 
 ## Release status
 
-This is the **v1.6.0 early-access release**, distributed to invited
+This is the **v1.7.0 early-access release**, distributed to invited
 testers on a free, revocable license. Today's artifacts are unsigned
 builds; the trust stack (Sigstore / cosign supply-chain attestation,
 signed checksums, and an SBOM) is on the roadmap. Until then, install
