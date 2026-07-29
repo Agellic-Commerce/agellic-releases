@@ -71,7 +71,7 @@ extra downloads.
 
 | Host                             | File               | Recipe                                       |
 | -------------------------------- | ------------------ | -------------------------------------------- |
-| Claude Desktop (macOS / Windows) | `agellic-mcp.mcpb` | Drag into CD → Settings → Extensions         |
+| Claude Desktop (macOS / Windows) | `agellic-mcp.mcpb` | Double-click (or drag into CD → Settings → Extensions) |
 | Claude Code (macOS / Linux)      | `agellic-mcp.zip`  | `unzip` + `node install.mjs`                 |
 | Claude Code (Windows)            | `agellic-mcp.zip`  | `Expand-Archive` + `node install.mjs`        |
 | Codex CLI / ChatGPT desktop      | `agellic-mcp.zip`  | `unzip` + `node install.mjs --host codex`    |
