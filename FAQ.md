@@ -73,7 +73,7 @@ Claude running; it drains as your Keepa tokens refill.
 
 ### What does "early-access" mean here?
 
-v1.7.0 is the current stable release, but distribution is still early-access:
+v1.7.1 is the current stable release, but distribution is still early-access:
 unsigned build artifacts delivered via the
 `Agellic-Commerce/agellic-releases` GitHub repo to invited testers,
 with no supply-chain attestation yet, no automatic updates, and no
@@ -90,9 +90,9 @@ public signup. Issues are triaged manually by the agellic team via
 No dates promised: these are the gates we're working through, not
 a schedule.
 
-### Do I need a new license for v1.7.0?
+### Do I need a new license for v1.7.1?
 
-No. If you already have a v1.0.0 license token, it works as-is on v1.7.0:
+No. If you already have a v1.0.0 license token, it works as-is on v1.7.1:
 same signing key, same coverage window. (Only the beta → v1.0.0 graduation
 required a one-time reissue, because v1.0.0 rotated the signing key and
 stopped accepting beta-era tokens; use the v1.0.0 token from that email.) If
@@ -145,16 +145,11 @@ will work there too.
 
 ### Cowork limitations?
 
-In Cowork (Claude Desktop's agent-mode surface), `get_product_chart`
-can't display the chart image: the sandboxed VM doesn't paint inline
-image content blocks and blocks reads of host-saved files. The model
-still receives the chart for analysis, so you get an accurate readout
-plus the Keepa product URL, just not the inline picture. Every other
-tool works normally. Regular Claude Desktop chat and Claude Code both
-render the chart inline.
-
-When you need the chart visual, use a regular Claude Desktop chat thread
-or Claude Code.
+None for charts as of v1.7.1: `get_product_chart` now renders inline in
+Cowork, the same MCP Apps view regular chat uses. (Releases before
+v1.7.1 could only deliver a text readout there.) After upgrading, quit
+Claude Desktop fully (Cmd-Q) and reopen so Cowork picks up the new
+server. Every other tool works in Cowork as it always has.
 
 ## Exchange rates
 
