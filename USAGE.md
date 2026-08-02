@@ -56,7 +56,8 @@ Claude to pull a lightweight signal table so you can rank or filter.
 > [paste the list]
 
 `screen_products` returns a 12-column pipe table per ASIN: BSR,
-estimated monthly sold, Buy Box price, trend, seller count, whether
+estimated monthly sold, landed Buy Box price (item + shipping), trend,
+seller count, whether
 Amazon is on the listing, lowest FBA offer, referral fee %, recent
 price drops, OOS %, brand. You then ask Claude to filter or rank by
 whichever columns matter. ~3 tokens per uncached ASIN; 500 ASIN cap
@@ -165,8 +166,9 @@ products.
 
 Two-step. First call: `execute_keepa_finder` filters-only to learn
 the match count. Second call: same filters plus `includeStats=true`,
-which returns the `searchInsights` summary: average Buy Box price,
-median seller count, the share of listings where Amazon is the Buy
+which returns the `searchInsights` summary: average landed Buy Box
+price (item + shipping, the same amount Amazon charges its referral fee
+on), median seller count, the share of listings where Amazon is the Buy
 Box winner, brand fragmentation across the match set, FBA share,
 average rating, average review count. The stats call costs `30 + ⌈
 totalResults / 1M⌉` tokens; refine first if the count is very large.
