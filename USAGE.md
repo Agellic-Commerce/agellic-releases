@@ -1,7 +1,7 @@
 # Usage examples
 
 A starter set of prompts to try once `agellic-mcp` is installed and
-connected. These are not exhaustive: agellic gives Claude eleven tools
+connected. These are not exhaustive: agellic gives Claude twelve tools
 and they compose freely. This is a starter set; the per-tool reference
 is in [TOOLS.md](./TOOLS.md).
 
@@ -55,15 +55,16 @@ Claude to pull a lightweight signal table so you can rank or filter.
 > I have 200 ASINs from my supplier, screen them for FBA viability.
 > [paste the list]
 
-`screen_products` returns a 12-column pipe table per ASIN: BSR,
+`screen_products` returns a 13-column pipe table per ASIN: BSR,
 estimated monthly sold, landed Buy Box price (item + shipping), trend,
 seller count, whether
 Amazon is on the listing, lowest FBA offer, referral fee %, recent
-price drops, OOS %, brand. You then ask Claude to filter or rank by
-whichever columns matter. ~3 tokens per uncached ASIN; 500 ASIN cap
-per call. A 200-ASIN screen on cold cache is ~600 tokens, on the
-default 20 TPM Keepa plan this queues as a background job and Claude
-polls until done.
+price drops, OOS %, brand, and a truncated title. You then ask Claude to
+filter or rank by whichever columns matter. ~3 tokens per uncached ASIN;
+500 ASINs per call, staged higher across calls. A 200-ASIN screen on cold
+cache is ~600 tokens, so on the default 20 TPM Keepa plan it comes back as
+a background work order that runs itself as tokens refill, and Claude polls
+it and reads rows as they land.
 
 > From those screening results, drop anything where Amazon is on the
 > listing or where the BSR is above 100,000.
@@ -78,7 +79,8 @@ where most of the screening value lives: the table is yours to slice.
 per-product picture: individual seller offers, FBA vs FBM split,
 stock depth, Buy Box rotation, calibrated demand range, observed
 sell-price bands, seasonality confirmation, review velocity, OOS
-history, referral fees, IP risk signals. ~8 tokens per uncached ASIN.
+history, referral fees, IP risk signals. Quoted at 16 tokens per uncached
+ASIN (the worst case it authorises), and it typically settles at ~6-8.
 
 ## Deep-dive on a shortlist
 
@@ -90,18 +92,20 @@ When you have a handful of ASINs and need offer-level depth.
 `get_product_details` returns each ASIN's Buy Box rotation table:
 dominant seller, win share, unique winner count over the window, plus
 a volatility flag in the insights block. Claude reads off who's
-stable, who's getting flipped, and whether Amazon is in the mix. ~40
-tokens cold.
+stable, who's getting flipped, and whether Amazon is in the mix. Quoted
+at 80 tokens cold, typically settling around 30-40.
 
 > For ASIN B0CJT5D35W, what's the calibrated monthly sales estimate
 > and how confident is the model in it?
 
 `get_product_details` on a single ASIN. The `demand` block returns a
 range (low / likely / high) with a confidence label
-(`high`/`medium`/`low`) and a `mode` field telling you which of the
-five estimation paths fired (standard / tier-split / floor-soft /
-multiplier-only / no-data). This is a range estimate, not a forecast:
-the confidence and mode matter as much as the number. ~8 tokens.
+(`high`/`medium`/`low`) and a `mode` field saying where the answer came
+from: `read` (the model's estimate), `badge` (Amazon's own "X+ bought
+past month" figure, which suppresses the model), or `no-read` (nothing
+usable, with a reason). This is a range estimate, not a forecast: the
+confidence and mode matter as much as the number. Quoted at 16 tokens,
+typically ~6-8.
 
 > Look up the ASIN for UPC 012345678905 on Amazon US.
 
@@ -188,15 +192,28 @@ category is saturated.
 
 - **Tokens are Keepa's currency, not ours.** Your Keepa subscription
   refills tokens on a per-minute schedule (20 TPM on the default
-  plan). Long screening runs will queue as background jobs when the
-  bucket runs low. Claude polls them automatically with
-  `check_job_status`. Run `check_token_balance` any time to see what
-  you have.
-- **Background jobs run on your machine, not the cloud.** A queued
+  plan). Run `check_token_balance` any time to see what you have.
+- **A short balance is not an error.** Every finder, screen, deep-dive,
+  cross-border, or code-resolution call becomes a durable **work order**.
+  If the tokens are there, you get the answer inline. If they aren't, the
+  order is accepted anyway and runs itself as tokens refill, and Claude
+  polls it with `check_job_status` and reads rows as they land. If the work
+  would take more than about an hour of refill, you get a quote first and
+  nothing is charged until you say yes. See
+  [TOOLS.md](./TOOLS.md#every-call-is-a-work-order).
+- **Ask for the ETA, and read it as a bound.** A background order reports
+  how many orders are ahead of it and a "done within ~X" figure that
+  recomputes and counts down every time you check. It assumes no other
+  work is running on your Keepa key, and its wall-clock estimate assumes
+  the app is open about 8 hours a day, so an always-open session finishes
+  roughly 3× sooner.
+- **Work orders run on your machine, not the cloud.** A queued
   screen or cross-border run drains as tokens refill, but only while a
   Claude app stays open. Quit Claude (or let the machine sleep) and the
-  job pauses; relaunch and it resumes where it left off, nothing lost.
-  Kick off the big one, leave Claude running, come back to results.
+  order pauses; relaunch and it resumes where it left off, nothing lost.
+  Kick off the big one, leave Claude running, come back to results. You
+  can stop one at any point, and everything it already settled stays
+  readable.
 - **The 24-hour cache is real.** Re-asking the same question later the
   same day is usually free, and the cache is shared across chats and
   both Claude apps, so a fresh conversation re-reads it for nothing.

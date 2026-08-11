@@ -18,23 +18,61 @@ depth of data each tool needs:
 
 | Tool | Cost | What it pays for |
 |---|---|---|
-| `execute_keepa_finder` | 10 + 1 per 100 ASINs returned | discovery against Keepa's pre-aggregated finder index |
+| `execute_keepa_finder` | 10 + 1 per started 100 ASINs returned | discovery against Keepa's pre-aggregated finder index |
 | `screen_products` | 3 tokens / ASIN | lite product record + buy-box snapshot |
-| `get_product_details` | ~8 tokens / ASIN (9 reserved, unused graph token refunded) | full product record (offers, history, dimensions, calibrated demand) |
-| `resolve_cross_border` | up to 12 tokens / ASIN | 3 for the source ASIN + 9 for up to 3 target-marketplace candidate fetches |
+| `get_product_details` | 16 tokens / ASIN quoted, ~6-8 actual | full product record (offers, history, dimensions, calibrated demand) |
+| `resolve_cross_border` | 12 tokens / ASIN quoted flat, settled lower | 3 for the source ASIN + up to 9 for up to 3 target-marketplace candidate fetches |
+| `resolve_codes` | ~1 token / candidate returned | identity-tier code to ASIN resolution |
 | `get_product_chart` | 1 token / chart | rendered PNG from Keepa |
 
-`check_token_balance`, `check_job_status`, and `get_*_result` are
-local: they cost nothing.
+`check_token_balance`, `confirm_work_order`, `check_job_status`, and
+`get_*_result` are local: they cost nothing.
+
+The two "quoted" figures are worth reading carefully. A quote is a
+**worst-case ceiling** that the work is authorised against, and the charge
+settles at Keepa's own figure as each batch commits, so an order quoted at
+400 tokens routinely costs a fraction of that. Quote the ceiling to
+yourself, then read the real number off the result.
 
 ### What happens when I run out of tokens?
 
-The server enqueues a background job and returns a `jobId`. Poll it
-with `check_job_status`. The token bucket refills at
-`AGELLIC_MCP_TOKENS_PER_MINUTE` per minute (default 20, matching Keepa's
-minimum paid tier). Once the bucket has enough capacity to cover the
-job, it runs. Until then the job stays `pending`: no work lost, no
-retry needed on your end.
+Nothing breaks, and nothing needs re-issuing. As of v2.0.0 every finder,
+screen, deep-dive, cross-border, and code-resolution call becomes a durable
+**work order**, and a balance too small to cover it is not an error. You get
+one of three answers:
+
+1. **The result inline**, when the balance covers the quote.
+2. **A background acceptance**, when it doesn't: an `orderId`, the cost,
+   and an ETA. The order runs itself as tokens refill. Poll it with
+   `check_job_status` and read rows as they settle with that tool's `fetch`
+   action.
+3. **A quote awaiting your consent**, when the work would take more than
+   about an hour of token refill. Nothing is charged until you agree and
+   `confirm_work_order` is called.
+
+The token bucket refills at `AGELLIC_MCP_TOKENS_PER_MINUTE` per minute
+(default 20, matching Keepa's minimum paid tier). Re-issuing the original
+call would create a second order for the same work and pay for it twice, so
+poll instead.
+
+### How much can I trust the ETA on a background order?
+
+Treat it as a **bound**, not a prediction: "done within ~X of token
+refill". It is recomputed every time you look at it and never stored, so it
+counts down as the queue drains and the balance refills. Three conditions
+ride with it:
+
+- It bounds the work **as currently quoted**. Each order ahead is priced at
+  its own quote, and an order can outgrow its quote, so this is a bound
+  rather than an unconditional ceiling.
+- It assumes **no other work is running on your Keepa key**. Another
+  machine or another app spending the same key is invisible to it.
+- Its wall-clock figure assumes an Agellic session is open **about 8 hours
+  a day**. Leave the app open all day and the work finishes roughly 3×
+  sooner.
+
+The cost line and the ETA are deliberately two separate claims: the cost is
+tokens and says nothing about duration.
 
 ### Do tokens carry over month-to-month?
 
@@ -46,7 +84,21 @@ Keepa account dashboard at [keepa.com/#!api](https://keepa.com/#!api).
 Ask Claude to run `check_token_balance`. It's a free local read:
 no Keepa call, no cost.
 
-## Caching & background jobs
+## Caching & work orders
+
+### What happened to background jobs and `jobId`s?
+
+They're gone as of v2.0.0, replaced by work orders. The old model created a
+background job only when a call hit a Keepa rate-limit wait; now every
+finder, screen, deep-dive, cross-border, and code-resolution call is a
+durable work order with a `wo_…` id from the start, whether it runs inline
+or in the background. Work orders do more than the old jobs did: you can
+read settled rows while one is still running, cancel a running one, and (on
+a screen) cap its spend, set a deadline, or stage a manifest larger than one
+call across several calls.
+
+The tool is still called `check_job_status` and its input field is still
+`jobId`, because hosts have already learned those names. Pass a `wo_…` id.
 
 ### If I look up the same product twice, do I pay twice?
 
@@ -59,15 +111,28 @@ cross-border result by id long after the original chat scrolled away:
 see `get_finder_result` / `get_cross_border_result` / `get_codes_result`
 in [TOOLS.md](./TOOLS.md).
 
-### Do background jobs keep running if I close Claude?
+### Do work orders keep running if I close Claude?
 
-Only while a Claude app is open. The job runner lives inside the MCP
+Only while a Claude app is open. The scheduler lives inside the MCP
 server process, which Claude Desktop and Claude Code start and stop with
-the app: there's no cloud worker. Jobs are durable, though: quitting
+the app: there's no cloud worker. Orders are durable, though: quitting
 Claude (or restarting your machine) **pauses** the queue, and the next
-time you launch Claude the job resumes from where it left off: nothing
-is lost. So for a big screen or cross-border run, kick it off and leave
-Claude running; it drains as your Keepa tokens refill.
+time you launch Claude the order resumes from where it left off, never
+re-charging a row it already settled. So for a big screen or cross-border
+run, kick it off and leave Claude running; it drains as your Keepa tokens
+refill.
+
+### Can I stop a run once it has started?
+
+Yes. Ask Claude to cancel the order (it calls
+`check_job_status` with `action: 'cancel'`). One that hasn't started stops
+instantly; a running one stops at its next dispatch boundary, so you pay
+only for what it actually fetched. Everything it settled before stopping
+stays readable, and you can page through those rows at 0 tokens.
+
+On a screen you can also cap the run up front: `maxTokenSpend` is a hard
+token ceiling, and `deadlineMinutes` is a time limit whose clock starts at
+authorisation and runs while the order waits in the queue.
 
 ## Prices
 
@@ -105,7 +170,7 @@ When shipping is greater than zero, `pricing.buyBox.itemCents` and
 
 ### What does "early-access" mean here?
 
-v1.8.0 is the current stable release, but distribution is still early-access:
+v2.0.0 is the current stable release, but distribution is still early-access:
 unsigned build artifacts delivered via the
 `Agellic-Commerce/agellic-releases` GitHub repo to invited testers,
 with no supply-chain attestation yet, no automatic updates, and no
@@ -122,10 +187,11 @@ public signup. Issues are triaged manually by the agellic team via
 No dates promised: these are the gates we're working through, not
 a schedule.
 
-### Do I need a new license for v1.8.0?
+### Do I need a new license for v2.0.0?
 
-No. If you already have a v1.0.0 license token, it works as-is on v1.8.0:
-same signing key, same coverage window. (Only the beta → v1.0.0 graduation
+No. If you already have a v1.0.0 license token, it works as-is on v2.0.0:
+same signing key, same coverage window. The major-version bump is about the
+tool surface, not licensing. (Only the beta → v1.0.0 graduation
 required a one-time reissue, because v1.0.0 rotated the signing key and
 stopped accepting beta-era tokens; use the v1.0.0 token from that email.) If
 a future build ever falls outside your license's coverage window, you'll get

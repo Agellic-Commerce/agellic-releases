@@ -29,21 +29,28 @@ force at inferred sale moments, plus where the current price sits inside
 them. The observed market, not a guess.
 
 **It won't torch your Keepa tokens.** Every call reports its token cost,
-balance is checked before spending, failed calls are refunded, and
-oversized jobs queue instead of erroring. Your metered quota is treated
-as the scarce resource it is.
+balance is checked before spending, work is charged at Keepa's own figure
+rather than the worst case it quoted, and anything too big for the balance
+right now queues instead of erroring. Work costing more than about an hour
+of token refill is quoted and waits for your explicit go-ahead. Your metered
+quota is treated as the scarce resource it is.
 
 **Remembers across chats.** Fetched products and result sets are cached
 on your machine and shared across every chat and every connected app, so
 you never pay Keepa twice for the same lookup, and you can reopen a
 finder or cross-border run in a fresh conversation.
 
-**Background jobs that drain themselves, locally.** Too big to run right
-now? It queues and works the backlog automatically as Keepa tokens
-refill, no babysitting. It runs on **your machine, not the cloud: leave
-the app open and the machine awake for jobs to progress**, and the queue
-is durable, so quitting pauses it and relaunching resumes right where it
-left off.
+**Work orders that drain themselves, locally.** Every data-pulling call
+becomes a durable work order, so "too big to run right now" is not an
+error: it
+queues and works the backlog automatically as Keepa tokens refill, no
+babysitting, and tells you how many orders are ahead and when to expect it.
+Read the rows it has settled while it is still going, cancel it at any
+point, or cap a big screen's spend before it starts. It runs on **your
+machine, not the cloud:
+leave the app open and the machine awake for work to progress**, and the
+queue is durable, so quitting pauses it and relaunching resumes right where
+it left off.
 
 **Cross-marketplace arbitrage in one question.** Match a product across
 Amazon marketplaces by UPC/EAN, convert the prices, and surface the gap:
@@ -92,7 +99,7 @@ unzip tool recognises the extension.
 
 - [**Install guide**](./INSTALL.md): requirements, step-by-step for
   Claude Desktop, Claude Code, and Codex, plus upgrade and uninstall.
-- [**Tool reference**](./TOOLS.md): the 11 tools, what each one does, and
+- [**Tool reference**](./TOOLS.md): the 12 tools, what each one does, and
   what it costs in Keepa tokens.
 - [**Computed insights**](./COMPUTED-INSIGHTS.md): the algorithms behind
   every number `get_product_details` returns, including the calibrated
@@ -108,7 +115,7 @@ unzip tool recognises the extension.
 
 ## Release status
 
-This is the **v1.8.0 early-access release**, distributed to invited
+This is the **v2.0.0 early-access release**, distributed to invited
 testers on a free, revocable license. Today's artifacts are unsigned
 builds; the trust stack (Sigstore / cosign supply-chain attestation,
 signed checksums, and an SBOM) is on the roadmap. Until then, install

@@ -1,7 +1,7 @@
 # Tool Reference
 
-This document is the practitioner reference for the 11 MCP tools exposed by
-agellic-mcp v1.8.0. Each section covers what the tool does, what
+This document is the practitioner reference for the 12 MCP tools exposed by
+agellic-mcp v2.0.0. Each section covers what the tool does, what
 it costs in Keepa tokens, what inputs it accepts, what it returns, and the
 operating rules worth knowing before you turn it loose on a candidate set.
 All Keepa token costs are concrete numbers measured against current
@@ -11,32 +11,122 @@ agellic-mcp pulls every figure from Keepa (`keepa.com`) and your Keepa
 subscription supplies the token bucket. If you don't have a Keepa account
 yet, grab one at [keepa.com/#!api](https://keepa.com/#!api) before you
 start. The default Keepa subscription is **20 tokens per minute** (1,200
-token bucket); a few calls in this document note where that ceiling
-becomes the binding constraint for sync vs background-job behavior.
+token bucket); several calls in this document note where that ceiling
+decides whether a call answers inline or runs itself in the background.
 
 ## Quick scan
 
 | Tool | One-line summary | Token cost |
 |------|------------------|------------|
-| `execute_keepa_finder` | Discover ASINs by category / brand / price / rank / competition filters; optional market-insights stats. | 10 base + 1 per 100 ASINs returned (stats: +30 base + 1/M total matches) |
-| `screen_products` | Bulk-screen up to 500 ASINs into a pipe-delimited Core-10 signals table (BSR, sellers, Buy Box, OOS, etc.). | 3 per uncached ASIN |
-| `get_product_details` | Deep per-product analysis: offers, Buy Box rotation, stock depth, calibrated demand, insights. Also resolves UPC/EAN/ISBN → ASIN. | ~8 per uncached ASIN (code lookup: 1 per candidate up to `codeLimit`) |
-| `resolve_cross_border` | Map source ASINs from one marketplace to equivalents on another via product codes; returns price gaps. | Up to 12 per source ASIN (3 source + 9 target) |
+| `execute_keepa_finder` | Discover ASINs by category / brand / price / rank / competition filters; optional market-insights stats. | 10 base + 1 per started 100 of `perPage` (stats: +30 base + 1 per whole million total matches) |
+| `screen_products` | Bulk-screen up to 500 ASINs per call into a pipe-delimited Core-10 signals table (BSR, sellers, Buy Box, OOS, etc.), staged higher across calls. | 3 per uncached ASIN |
+| `get_product_details` | Deep per-product analysis: offers, Buy Box rotation, stock depth, calibrated demand, insights. Also resolves UPC/EAN/ISBN → ASIN. | 16 per uncached ASIN quoted worst-case, ~6-8 actual (code lookup: 1 per candidate up to `codeLimit`) |
+| `resolve_cross_border` | Map source ASINs from one marketplace to equivalents on another via product codes; returns price gaps. | 12 per source ASIN quoted flat (3 source + 9 target), settled lower |
 | `resolve_codes` | Bulk-resolve supplier UPC/EAN/GTIN/ISBN codes (up to 500 rows) to candidate ASINs at the identity tier. | ~1 per returned candidate (≈1/code typical) |
 | `get_product_chart` | Fetch a price/BSR history PNG chart for one ASIN on one marketplace. | 1 flat per call (Keepa 90-min server cache) |
 | `check_token_balance` | Show current Keepa token balance, refill rate, and cache-aware per-tool cost projections. | 0 (local) |
-| `check_job_status` | Check, list, or cancel background jobs created when a call hit a Keepa rate-limit wait; pending status shows queue position + token-wait ETA. | 0 (local) |
+| `confirm_work_order` | Authorise a work order that was quoted but not started, because it costs more than ~1 hour of token refill. | 0 (local) |
+| `check_job_status` | List, poll, cancel, or page through the rows of a `wo_…` work order. The status report carries progress, spend, and a live queue-aware ETA. | 0 (local) |
 | `get_finder_result` | Page through ASINs from a stored finder result set by id. | 0 (local) |
 | `get_cross_border_result` | Retrieve a cached cross-border analysis by id, or list recent ones. | 0 (local) |
 | `get_codes_result` | Page through a stored code-resolution result set (the per-row candidate table). | 0 (local) |
 
-The 5 free tools (`check_token_balance`, `check_job_status`,
-`get_finder_result`, `get_cross_border_result`, `get_codes_result`) read
-local state only and never charge Keepa tokens. Cached re-reads of the
-paid tools are also free for 24 hours.
+The 6 free tools (`check_token_balance`, `confirm_work_order`,
+`check_job_status`, `get_finder_result`, `get_cross_border_result`,
+`get_codes_result`) work against local state only and never charge Keepa
+tokens. Cached re-reads of the paid tools are also free for 24 hours.
 
 Domain values referenced throughout: `1`=US, `2`=UK, `3`=DE, `4`=FR,
 `5`=JP, `6`=CA, `8`=IT, `9`=ES, `10`=IN, `11`=MX, `12`=BR.
+
+---
+
+## Every call is a work order
+
+This is the biggest change in v2.0.0. Every call to the five data-pulling
+tools (`execute_keepa_finder`, `screen_products`, `get_product_details`,
+`resolve_cross_border`, `resolve_codes`) now becomes a durable **work
+order** with its own `wo_…` id. The order is a record of exactly what was
+asked for, what it may spend, and what it has settled so far, which is what
+makes a large run survivable: it funds itself batch by batch as tokens
+refill, resumes after a dropped session, and never re-charges a row it
+already fetched.
+
+A balance too small to cover the work is no longer an error. Every such call
+returns exactly one of three answers, and it is worth knowing which one you
+got:
+
+1. **The result, inline.** The balance covered the quote, so the work ran in
+   the call. You get the usual output plus an `orderId` and a result-set
+   handle you can re-read later at 0 tokens.
+2. **A background acceptance.** There weren't enough tokens yet, so the
+   order was accepted anyway and runs itself as they refill. No results yet:
+   you get the `orderId`, a `Cost:` line, and a `Queue:`/`ETA:` pair. Poll
+   with `check_job_status` and read rows as they land with its `fetch`
+   action. Do not re-issue the original call, which would create a second
+   order for the same work and pay for it twice.
+3. **A consent quote.** The work would take more than roughly one hour of
+   token refill, so nothing starts and nothing is charged. You get the
+   `orderId`, a `Quote:` line, a one-time `confirmToken`, and the same
+   `Queue:`/`ETA:` pair framed as "If you confirm now:". The order starts
+   only once you agree and `confirm_work_order` is called, and confirming
+   **queues** it, which is not the same as starting it.
+
+`execute_keepa_finder` is the exception to answer 3: one finder query is one
+indivisible Keepa call, so there is no consent gate. It runs inline, waits
+in the background, or (when the query would cost more than the bucket can
+ever make available to a single call) is refused at the door with nothing
+created and nothing charged.
+
+`get_product_chart` is outside this model entirely. At 1 flat token it is
+never a work order, and on a drained bucket it just asks you to retry in a
+few seconds.
+
+### Cost and time are two separate claims
+
+The `Cost:` / `Quote:` line is tokens only (`worst case N tokens at R/min`)
+and says nothing about how long the work takes. The wait is the separate
+`Queue:`/`ETA:` pair beneath it: how many orders are ahead and what they
+still owe, then a **bound**, "done within ~X of token refill".
+
+That ETA is recomputed from scratch every time it is rendered and is never
+stored, so it counts **down** across polls as the queue drains and the
+balance refills. Three conditions ride with it, and they are worth repeating
+whenever you pass the number on to someone else:
+
+- It bounds the work **as currently quoted**. Every order ahead is priced at
+  its own quote, and an order can outgrow its quote (cached entries expiring
+  mid-run, for instance), so this is a bound rather than an unconditional
+  ceiling.
+- It assumes **no other work is running on this Keepa key**. Queued orders
+  are the only competition it can see; a second machine or a second edition
+  spending the same key is invisible to it.
+- Its wall-clock figure assumes an Agellic session is open **~8 hours a
+  day**. An always-open session finishes roughly 3× sooner.
+
+Quotes are worst-case ceilings; charges settle at Keepa's own figure as each
+batch commits, so an order quoted at 400 tokens routinely settles for a
+fraction of that. Mid-run, the charged total on a status report also
+includes tokens reserved for requests still in flight. That reserve releases
+when they settle, so the figure can go **down** before the order ends.
+
+### Running, watching, stopping
+
+- Work advances **only while an Agellic session is open**. Quit the app or
+  let the machine sleep and the queue pauses; relaunch and it resumes where
+  it left off with nothing lost. There is no cloud worker.
+- **Polling is free and speeds nothing up.** Only the passage of time and
+  token refill move an order along, and the ETA counts down with them, not
+  with how often you look.
+- **Any order can be cancelled** with
+  `check_job_status({ jobId: "<orderId>", action: "cancel" })`. One that has
+  not started stops instantly; a running one stops at its next dispatch
+  boundary, and everything it settled stays readable with `fetch`.
+- Results persist as result-set handles: `screen:<orderId>`,
+  `lookup:<orderId>`, `finder:<orderId>`, `codes:<orderId>`, and `xb_…` for
+  cross-border. Finished orders are kept for **14 days**, and a result-set
+  view whose own 24-hour TTL has lapsed is rebuilt on demand, for free, by
+  `check_job_status`.
 
 ---
 
@@ -69,14 +159,29 @@ Not the right tool when the user already has ASINs: go straight to
 
 ### Token cost
 
-- **Base: 10 tokens** + **1 token per 100 ASINs returned**.
-- **Stats (`includeStats=true`):** +30 base + 1 per million `totalResults`.
+- **Base: 10 tokens** + **1 token per started 100 ASINs returned**.
+  `perPage=100` costs 11, `perPage=1000` costs 20.
+- **Stats (`includeStats=true`):** +30 base + 1 per whole completed million
+  of `totalResults` (`⌊totalResults / 1,000,000⌋`, so under 1M matches the
+  surcharge is exactly the flat 30).
 - `perPage` is a **ceiling on cost, not a fixed charge**. Keepa bills
   `10 + ⌈min(perPage, totalResults)/100⌉`. So `perPage=10000` on a
   4,231-match query costs **53 tokens**, not 110. Even the worst case
   (`perPage=10000` returning a full 10,000 ASINs) is 110 tokens.
+- **`perPage` has an effective floor of 100.** Keepa charges per *started*
+  100 results, so `perPage=1`, `50` and `100` all cost the same 11 tokens.
+  Asking for fewer than 100 buys nothing and forfeits ASINs you already paid
+  for.
 - A broad **single-filter** search can match hundreds of millions of
   products and cost 300+ tokens. Always combine ≥ 2 filters.
+
+**Pricing insights accurately: `expectedTotalResults`.** The stats surcharge
+is charged on the count the call actually matched, which nobody knows before
+it returns, so this is the one call that can charge more than it quoted. The
+fix is to run insights as a pair: the same filters once with `includeStats`
+omitted (cheap), then again with `includeStats: true` **and**
+`expectedTotalResults` set to the `totalResults` that first run reported.
+The hint is local, used only to price the quote, and never sent to Keepa.
 
 ### Inputs
 
@@ -180,11 +285,19 @@ section above.
   `[partial: <id> · <fetched> of <total> · <advisory>]`. The slice is
   cached too, but the label says refine, or get explicit user
   acceptance, before any downstream tool call uses it.
-- **Rate-limited:** returns a `jobId`. The search is queued as a
-  background job; poll with `check_job_status`. The completed status
-  returns a handle only when the full result set fit on one page.
-- **Zero results:** plain-text message; the model suggests filter
-  adjustments.
+- **Not funded yet:** no ASINs at all. The search is accepted as a
+  background work order and returns an `orderId` (`wo_…`), its cost, and a
+  queue-aware ETA bound. Poll with `check_job_status`; the handle arrives
+  through its `status` or `fetch` action once the query lands. A partial
+  slice is handed off the same way, with the same "refine first" caveat.
+- **Refused at the door:** the query would cost more than this Keepa bucket
+  can ever make available to a single indivisible call. The error names the
+  cost and the cheaper query to run (usually `perPage=100`, or dropping
+  `includeStats`, or refining below the fundable match count). Nothing is
+  created and nothing is charged. A finder query is never subject to the
+  consent gate, so `confirm_work_order` never sees one.
+- **Zero results:** plain-text message including the actual charge (a
+  zero-match query still bills); the model suggests filter adjustments.
 
 ### perPage
 
@@ -244,8 +357,8 @@ explicit user acceptance.
 ## `screen_products`
 
 Bulk screening tool. Compresses each product into 10 Core screening
-signals plus 2 identifiers, returned as a pipe-delimited table, one row
-per ASIN.
+signals plus 3 identity columns, returned as a pipe-delimited table, one
+row per ASIN.
 
 ### What it's good for
 
@@ -253,7 +366,7 @@ per ASIN.
   result, an external list, or a prior screen) and wants to rank, sort,
   or filter by Core-10 signals like BSR, Buy Box price, seller count,
   Amazon presence, OOS percentage, or 30-day price drops.
-- Cheaper than `get_product_details` (3 tokens vs ~8) and 10× the
+- Cheaper than `get_product_details` (3 tokens vs 16 quoted) and 10× the
   capacity per call (500 vs 50). Use it whenever you don't need offer
   ladders or stock depth.
 
@@ -263,7 +376,9 @@ per ASIN.
   no offers / stock / rating).
 - **0 tokens for cached ASINs** (24h product cache).
 - Duplicates in the input list are auto-removed before billing.
-- Unused reserved tokens are refunded automatically.
+- Tokens are spent batch by batch as the order runs, and each batch settles
+  at Keepa's own figure. A screen that stops early or is cancelled is
+  charged only for the rows it actually fetched.
 
 ### Inputs
 
@@ -272,15 +387,37 @@ Mutually exclusive, pass exactly one:
 - **`resultSetId`**: id from a prior `execute_keepa_finder`,
   `get_product_details`, or `screen_products` call. The tool resolves
   ASINs server-side so you don't burn context dumping them inline.
-  Still capped at 500.
+  Still capped at 500 per call. Its ASINs are copied into the order at
+  once, so the order outlives the source set's own 24h expiry.
 - **`asins`**: up to 500 ASINs. Use when you have an explicit list.
+
+Optional on any call:
+
+- **`maxTokenSpend`**: a hard ceiling. The order stops rather than exceed
+  it, keeping everything it settled. Worth setting whenever token spend is
+  a concern.
+- **`deadlineMinutes`**: give up this long after **authorisation**. The
+  clock runs while the order waits in the queue, not from its first Keepa
+  request.
+- **`orderId` + `stage`**: staging, below.
+
+Both ceilings are fixed on the call that creates the order. Passing a
+different value on a staging continuation is refused, not silently ignored.
+
+### Staging: manifests larger than 500
+
+The 500 cap bounds one request's payload, not the screen. To screen 1,200
+ASINs, send three `stage: true` calls (500, 500, 200) chained by the
+`orderId` the first one returns, then a final call with no ASINs that seals
+the manifest, quotes it, and starts the work. Nothing is priced or fetched
+until that final call, and an order left staged is discarded after 24 hours.
 
 ### What it returns
 
-A pipe-delimited text table. The 12-column header is:
+A pipe-delimited text table. The 13-column header is:
 
 ```
-ASIN|BSR|Sold|BB(c)|Trend|Sellers|Amz|FBA(c)|Ref%|Drops30|OOS90|Brand
+ASIN|BSR|Sold|BB(c)|Trend|Sellers|Amz|FBA(c)|Ref%|Drops30|OOS90|Brand|Title
 ```
 
 | Column  | Description                                          |
@@ -296,33 +433,47 @@ ASIN|BSR|Sold|BB(c)|Trend|Sellers|Amz|FBA(c)|Ref%|Drops30|OOS90|Brand
 | Ref%    | Referral fee percentage                              |
 | Drops30 | Sales-rank drops in last 30 days (sales proxy)       |
 | OOS90   | Amazon out-of-stock percentage over the last 90 days |
-| Brand   | Brand name (identifier)                              |
+| Brand   | Brand name (a gibberish brand is the private-label tell) |
+| Title   | Truncated core of the Amazon title (≤70 chars), which separates rows on a branded screen where Brand is uniform |
 
-Values are plain numbers. Nulls render as dashes. A summary line at the
-top reports `requested:N fetched:N cached:N failed:N tokens:N`.
+Values are plain numbers (Brand and Title are text). Nulls render as
+dashes. A summary line at the top reports
+`requested:N fetched:N cached:N failed:N tokens:N`, followed by the
+`resultSetId` and the `orderId`.
 
-The result set is stored internally (`screen:<timestamp>` id, 24-hour
-TTL) so downstream tools can reference it.
+The result set is stored under `screen:<orderId>` (24-hour TTL, rewritten
+after every batch) so downstream tools can reference a screen that is still
+running.
+
+### Which of the three answers you got
+
+A screen returns the table inline when the balance covers the quote, a
+background acceptance when it doesn't, or a consent quote when the work
+exceeds ~1 hour of refill (see
+[Every call is a work order](#every-call-is-a-work-order)). A `PARTIAL —`
+line above the table means the run stopped early and the rest continues in
+the background: poll it rather than re-calling, since a second call creates
+a second order for the same ASINs.
 
 ### Limitations
 
-- **500 ASINs per call, hard cap.** For larger result sets, narrow via
-  finder filters or use `get_finder_result({ resultSetId, limit: 500 })`
-  to take a BSR-sorted top-500 slice from a larger finder result.
-- **Async on low-TPM Keepa plans.** The default Keepa subscription is
-  20 TPM (token bucket capacity 1,200). A 500-ASIN screen costs 1,500
-  tokens, over capacity, so it queues as a background job. On 100+ TPM
-  plans (capacity 6,000+) the same call runs synchronously. When a call
-  queues, the assistant tells you and polls `check_job_status`; once the
-  job is `completed`, a follow-up `screen_products` call with the same
-  inputs retrieves results at 0 tokens from cache.
+- **500 ASINs per call.** Beyond that, either narrow via finder filters, use
+  `get_finder_result({ resultSetId, limit: 500 })` to take a BSR-sorted
+  top-500 slice, or stage the manifest across several calls.
+- **Big screens on low-TPM Keepa plans run in the background.** The default
+  Keepa subscription is 20 TPM (bucket capacity 1,200). A 500-ASIN screen
+  costs 1,500 tokens, roughly 75 minutes of refill, so on that plan it comes
+  back as a background acceptance or a consent quote rather than a table; on
+  100+ TPM plans (capacity 6,000+) the same call usually runs inline. Read
+  the settled rows with `check_job_status({ jobId, action: 'fetch' })` as
+  they land.
 - Force-refreshing cached data is not supported. The Keepa cache is used
   automatically when it satisfies screening requirements.
 
 ### When to use vs `get_product_details`
 
-Screening gives 10 signals + 2 identifiers per ASIN, usually enough to
-rank and filter a candidate set. `get_product_details` is a separate
+Screening gives 10 signals plus ASIN, Brand and a truncated Title per row,
+usually enough to rank and filter a candidate set. `get_product_details` is a separate
 choice for a small shortlist that needs per-seller offers, Buy Box
 rotation, stock depth, or calibrated demand. The two are independent
 choices, not sequential steps: sometimes a screen is all you need.
@@ -349,12 +500,15 @@ UPC/EAN/ISBN code to ASINs on one specified marketplace.
 
 **Enriched fetch (`asins` / `resultSetId` modes):**
 
-- **~8 tokens per uncached ASIN** observed average. The tool reserves 9
-  tokens per ASIN as a ceiling (6 offers + 2 stock + 1 graph) and
-  refunds the difference; the 1-token graph allowance is refunded
-  whenever Keepa does not return graph data, which is most calls.
-- **0 tokens for cached ASINs** (24h product cache).
-- Partial cache hits: only uncached ASINs cost tokens.
+- **16 tokens per uncached ASIN, worst case.** That is the measured
+  enriched ceiling the order quotes and authorises per row (two 6-token
+  offer pages, stock, rating, graph). Every dispatch reserves it, then
+  settles at Keepa's own charge, so **measured actuals land around 6-8
+  tokens per ASIN**. Quote the ceiling, report the ledger figure as the
+  cost.
+- **0 tokens for cached ASINs** (24h product cache). They are excluded from
+  the quote entirely.
+- Partial cache hits: only uncached ASINs are quoted and charged.
 
 **Code lookup (identification tier):**
 
@@ -377,11 +531,12 @@ Mutually exclusive, pass exactly one:
   compatibility, but >1 is rejected at runtime.
 
 Pass `update=null` unless the user explicitly asks for fresh data.
-`update=0` forces a live Keepa crawl (~8 tokens per ASIN) even if the
-data was fetched minutes ago, the 24h product cache is correct for
-almost every workflow.
+`update=0` forces a live Keepa crawl even if the data was fetched minutes
+ago, and because a force-refresh treats every ASIN as uncached, it is quoted
+at the full 16 tokens per ASIN. The 24h product cache is correct for almost
+every workflow.
 
-Every successful fresh fetch persists a `lookup:<timestamp>` result set,
+Every order materializes a `lookup:<orderId>` result set as its rows settle,
 so a follow-up call can re-read the same ASINs by id at 0 tokens.
 
 ### What it returns
@@ -411,11 +566,15 @@ Per resolved ASIN:
 - **`sales`**: current and historical sales rank, primary + leaf BSR
   with category names, 30/90/180d drops, Amazon-reported monthly sold
   badge (when available; the model's range estimate lives in `demand`).
-- **`demand`**: calibrated monthly-sales range (`rangeLow` /
-  `centerLikely` / `rangeHigh`), confidence (`high` / `medium` / `low`),
-  `mode` (`standard` / `tier-split` / `floor-soft` / `multiplier-only` /
-  `no-data`), trajectory, sample size, and `caveats` (free-text
-  qualifiers like "estimate from cross-marketplace baseline").
+- **`demand`**: Demand Read v3, a velocity-implied monthly-sales estimate
+  (not a verified figure), discriminated on `mode`. **`read`** carries the
+  model estimate: `centerLikely` (the conservative plan-on number),
+  `rangeLow` / `rangeHigh`, a ready-to-print `hero` range, confidence
+  (`high` / `medium` / `low`), and `source`. **`badge`** means Amazon
+  reports an "X+ bought past month" figure, which is ground truth, so the
+  model is suppressed and the badge value is echoed. **`no-read`** means
+  nothing usable, with a `reason` saying why. All three carry `caveats`,
+  free-text qualifiers like "estimate from cross-marketplace baseline".
 - **`seasonality`**: whether a recurring seasonal peak exists and how
   sure the detector is. `confirmationLevel` separates `confirmed` (the
   peak recurred across 2+ years) from `candidate` (one season observed,
@@ -442,17 +601,23 @@ Per resolved ASIN:
 - **`economics`**: referral fee percent, FBA pick & pack fee, return
   rate.
 - **`metadata`**: listing age, Subscribe & Save eligibility.
-- **`tokensUsed`**: actual tokens consumed by this call.
+- **`tokensUsed`**: the order's ledger, meaning what Keepa actually charged
+  for the rows settled so far, never the worst-case quote.
 
-When rate-limited, returns a `jobId`; poll with `check_job_status`. Once
-the job completes, re-call `get_product_details` with the same `asins` /
-`resultSetId` and cached data is served at 0 tokens.
+Like every other Keepa-calling tool, a lookup returns the products inline, a
+background acceptance, or a consent quote (see
+[Every call is a work order](#every-call-is-a-work-order)). A reply marked
+**PARTIAL** names the `orderId` and the rest continues in the background:
+poll it and page the settled products with
+`check_job_status({ jobId, action: 'fetch' })`. **INCOMPLETE** and
+**CANCELLED** are final, so the products under them are everything the order
+settled.
 
 ### Cost discipline
 
 State the worst-case spend before running on a stored result set
-(`uncached_asins × 8` tokens, the cache absorbs anything fetched in the
-last 24h). Per-product output is **~5–10 KB** depending on offer count
+(`uncached_asins × 16` tokens, with actuals typically ~6-8 and the cache
+absorbing anything fetched in the last 24h). Per-product output is **~5–10 KB** depending on offer count
 (up to 20 offers per product) and insight verbosity. 10 ASINs ≈ ~75 KB
 / ~20K tokens of context; 50 ASINs ≈ ~375 KB / ~100K tokens. There's
 no fixed "batch size target": state the spend, then let the user decide
@@ -515,12 +680,17 @@ single-product identification by UPC/EAN/ISBN on one marketplace
 | Target code resolution (CODE_LIMIT=3 candidates × 3 tok each) | 9 per ASIN |
 | **Worst-case total** | **12 per source ASIN** |
 
-Actual cost is frequently lower: cached source / target products cost 0;
-products with no codes skip Stage 2 (same-ASIN fallback ≤ 3 tokens);
-fewer than CODE_LIMIT candidates → proportionally fewer tokens. Unused
-preflight reservation is refunded.
+**The order is quoted flat at 12 per source ASIN, with no cache discount.**
+A source already in the product cache has only had its source half done and
+still owes up to 9 tokens of target-side resolution, so pricing treats every
+row as uncached. A 50-ASIN batch is therefore authorised at 600 tokens
+whether or not those sources are cached.
 
-A 50-ASIN batch can cost up to 600 tokens worst-case.
+Actual cost is frequently much lower, and it settles as each batch commits:
+cached sources skip their 3-token fetch, products with no codes skip stage 2
+for a ≤3-token same-ASIN fallback, and fewer than CODE_LIMIT candidates
+costs proportionally less. `summary.tokensUsed` on the result is the only
+real charge. Quote the ceiling, then report that number.
 
 ### Inputs
 
@@ -538,7 +708,15 @@ content block; the text itself is `JSON.stringify(result)`. The parsed
 object carries:
 
 **`summary`**
-- `sourceCount`, `matchedCount`, `unmatchedCount`
+- `sourceCount`, `matchedCount`, `unmatchedCount`. `sourceCount` is what the
+  order set out to resolve (the whole manifest), not what has settled.
+- `pendingCount`: source ASINs **not yet resolved**, present while rows are
+  outstanding. Treat a pending source as one that has not been looked at,
+  never as one that found no arbitrage.
+- `orderEnded`: `true` once the order has reached a terminal state, which
+  means its pending rows are final. Absent means the result is still filling
+  in, so poll; present means stop polling and re-run those sources if you
+  still want them.
 - `avgGapPercent`: average % gap across priced matches (null if none
   priced)
 - `sourceDomain` / `targetDomain`: human-readable marketplace labels
@@ -577,18 +755,21 @@ with `get_cross_border_result`.
 ### Limitations and operating notes
 
 - **500 ASINs per call, hard maximum.**
-- **Rate-limit / async path.** A call runs synchronously as long as the
-  token bucket has capacity for the preflight reservation. The
-  reservation is **cache-aware**: a source product already in cache
-  drops its source-fetch charge, so a partially-cached batch reserves,
-  and the fundable-gate ETA reflects, the lower actual cost rather than
-  the worst-case `12 × source_asins`. When the bucket can't satisfy the
-  reservation, the call enqueues a `cross_border` background job and
-  returns a `jobId`. Poll with `check_job_status`, then retrieve results
-  with `get_cross_border_result`. **Rough sizing on the default 20 TPM
-  Keepa plan (capacity 1,200 tokens): ~100 fully-uncached source ASINs
-  is the inline ceiling**; cached batches and higher TPM plans push it
-  much higher.
+- **Inline, background, or consent.** A call runs inline as long as the
+  balance covers the flat `12 × source_asins` quote. When it doesn't, the
+  call is accepted as a background work order (or, over ~1 hour of refill,
+  quoted for consent) rather than refused: poll with `check_job_status` and
+  read settled rows with its `fetch` action, or retrieve the whole analysis
+  with `get_cross_border_result`. **Rough sizing on the default 20 TPM Keepa
+  plan (capacity 1,200 tokens): ~100 source ASINs is the inline ceiling**;
+  higher TPM plans push it much higher. Because the quote carries no cache
+  discount, a warm cache raises what the order *settles* for, not what it
+  needs up front to run inline.
+- **The `xb_` id is stable for the order's whole life** and the blob behind
+  it is rewritten after every batch, so an id handed over mid-run still
+  resolves against whatever the order ends up with. That is why the result
+  can be read while it is still incomplete: check `pendingCount` and
+  `orderEnded` before drawing conclusions from the match count.
 - **Exchange rates** are baked-in approximations suitable for spotting
   arbitrage opportunities. Not suitable for forex or accounting.
   `exchangeRateDate` in the summary indicates when rates were last
@@ -617,9 +798,12 @@ correctly).
 - **~1 Keepa token per returned candidate** (typically ≈1 per code, since
   most codes match a single ASIN). `codeLimit` (default 3, max 20) caps
   candidates per code.
-- Codes not in Keepa's database cost ~nothing. Worst case
-  (`uniqueCodes × codeLimit`) is reserved up front and the unspent
-  remainder refunded.
+- Codes not in Keepa's database cost ~nothing. The order is **quoted at the
+  worst case** (`uniqueCodes × codeLimit`) and **settled at Keepa's actual
+  charge** as each dispatch commits. There is no whole-call reservation to
+  refund.
+- There is no cache discount here: the identity tier never writes the
+  product cache, and the question a code asks is which ASINs it maps to.
 
 ### Inputs
 
@@ -641,6 +825,17 @@ candidate table is NOT returned here**: it is cached (24 h) and read via
 `get_codes_result`. `multiCandidate` is your action signal: those rows
 need disambiguation; single-candidate rows are done.
 
+The `codes:` id is derived from the work order and stable for its whole
+life, so an id handed over mid-run still resolves against whatever the order
+ends up with. If the stored view expires before the order does, a
+`check_job_status` poll rebuilds it for free rather than re-resolving.
+
+When a run stops short, the reply is **two blocks with the note first and
+the summary last**, so read the last block for the counts. The note's
+opening word tells you whether more is coming: **PARTIAL** and **NOT
+STARTED** leave a live order to poll, while **INCOMPLETE** and
+**CANCELLED** are terminal and nothing resumes.
+
 ### Disambiguation: the tool states facts, you judge
 
 It never auto-picks a winner. Each cached row carries the echoed supplier
@@ -656,8 +851,14 @@ price, `ambiguityFlags`). Compare and choose yourself.
 - The resultSetId holds the **union of all candidates across rows**: for
   large manifests, disambiguate first and pass the chosen subset
   downstream, not the raw union (it can exceed a 500-ASIN cap).
-- Rate-limited calls queue a `codes` background job: poll
-  `check_job_status`; the completion message carries the resultSetId.
+- A call the balance can't fund is accepted as a background work order
+  instead of being refused: poll `check_job_status`, which hands back the
+  `codes:` resultSetId once anything settles. Do not re-call `resolve_codes`
+  to retry, which pays for the same resolution twice.
+- **A zero-candidate row is not proof the code is unknown to Keepa.** A code
+  the run never reached renders identically to a genuine miss. The
+  `PARTIAL:` line in the summary is what tells the two apart, so confirm
+  with `check_job_status` before treating a `notFound` code as dead.
 
 ---
 
@@ -761,8 +962,8 @@ Keepa.
 ### What it's good for
 
 - Before running an expensive call (a 500-ASIN screen, a 50-ASIN deep
-  dive, a 100-ASIN cross-border), check whether you'll fit synchronously
-  or be queued to the background job runner.
+  dive, a 100-ASIN cross-border), check whether it will answer inline or
+  be accepted as background work.
 - Find out what fraction of a candidate set is already cached, so you
   can quote an accurate cost to the user instead of the worst-case.
 - Get current balance and refill rate (tokens/min) for situational
@@ -798,107 +999,203 @@ Three call modes:
 
 | Tool | Cost |
 |------|------|
-| `execute_keepa_finder` | 10 base + 1 per 100 ASINs; stats add 30 + 1/million `totalResults` |
+| `execute_keepa_finder` | 10 base + 1 per started 100 ASINs; stats add 30 + 1 per whole completed million of `totalResults` |
 | `screen_products` | 3 per uncached ASIN |
-| `get_product_details` (ASIN / resultSetId modes) | ~8 per uncached ASIN (9 reserved, graph delta refunded) |
-| `resolve_cross_border` | up to 12 per source ASIN (3 source + 9 target, CODE_LIMIT=3) |
-| `resolve_codes` | ~1 per returned candidate, up to `codeLimit` (default 3, max 20) |
+| `get_product_details` (ASIN / resultSetId modes) | **16 per uncached ASIN**, the authorised worst case; actuals settle at ~6-8 |
+| `resolve_cross_border` | **12 per source ASIN** (3 source + up to 9 target, CODE_LIMIT=3), quoted flat with no cache discount; actuals settle lower |
+| `resolve_codes` | ~1 per returned candidate, quoted at `uniqueCodes × codeLimit` (default 3, max 20) |
 | `get_product_details` code lookup | 1 per returned candidate, up to `codeLimit` (default 3) |
 | `get_product_chart` | 1 flat (cached by Keepa 90 min) |
-| `get_finder_result`, `get_cross_border_result`, `get_codes_result`, `check_job_status`, `check_token_balance` | free (local reads) |
+| `confirm_work_order`, `check_job_status`, `check_token_balance`, `get_finder_result`, `get_cross_border_result`, `get_codes_result` | free (local reads) |
 
 ### Timing expectations
 
 - Small lookups (≤20 ASINs) usually complete immediately.
 - Medium lookups (50–200 ASINs) may take several minutes.
-- Large lookups run as background jobs: poll with `check_job_status`.
+- Large lookups become background work orders: poll with
+  `check_job_status` (`action: 'status'`) and read settled rows with
+  `action: 'fetch'`. They advance only while an Agellic session is open.
 
 ### Notes
 
 - Cached ASINs cost 0 tokens for single-domain lookups. Cross-border is
-  cache-aware on the **source** side: a cached source product drops its
-  source-fetch charge, so a partially-cached batch is quoted (and funded)
-  at the lower actual price; only uncached source pulls plus the target
-  fetches are charged.
-- For lookups >100 ASINs, expect to be queued on the default 20 TPM
-  plan.
+  only *partially* cache-aware: a source-cached ASIN saves the 3-token
+  source fetch but still owes **up to** 9 for target resolution on the other
+  marketplace, so this tool prices it at 9 rather than 0. Both figures are
+  ceilings, and `resolve_cross_border` itself quotes the flat 12 per ASIN
+  regardless. Read the cross-border number here as *the most a warm cache
+  will still cost you*.
+- **A cost above the bucket's capacity is not a refusal** for work that
+  splits. `screen_products`, `get_product_details`, `resolve_codes` and
+  `resolve_cross_border` all become background work orders that fund
+  themselves batch by batch, so there is no need to split a list by hand.
+  `execute_keepa_finder` is the exception: one query is one indivisible
+  Keepa call, so an over-ceiling quote is refused with advice to lower
+  `perPage`.
+- **A refill rate of 0/min is a hard refusal**, not a wait. It means Keepa
+  product tracking is consuming the whole plan's rate, so the tokens can
+  never accrue and a full bucket doesn't rescue it. Shrink the tracked
+  product list or upgrade the plan.
+- **This tool's `Wait ~N minutes` estimate is not an order's real wait.** It
+  is balance over refill rate for a hypothetical call right now, and it
+  cannot see other work already queued on the key. Once a call has created
+  an order, `check_job_status` reports the real, queue-aware bound.
+
+---
+
+## `confirm_work_order`
+
+The consent gate. When a tool quotes work costing more than **60 minutes of
+Keepa token refill**, it does not start it: it returns an `orderId`, a
+cost-only `Quote:` line, a queue-aware ETA bound, and a one-time
+`confirmToken`. Passing the id and the token back here authorises the order.
+
+### What it's good for
+
+- Starting a large screen, lookup, code resolution, or cross-border run that
+  came back awaiting consent, once the user has seen the numbers and agreed.
+
+### Token cost
+
+**0 Keepa tokens.** It reads local state and writes a consent record; the
+Keepa spend happens later, as the order runs.
+
+### Inputs
+
+- **`orderId`**: the id returned alongside the quote (`wo_<timestamp>_<suffix>`).
+- **`confirmToken`**: the one-time token issued with that quote. It is bound
+  to that quote, so any re-quote invalidates it.
+
+### What happens
+
+| Order state | Result |
+|---|---|
+| `quoted`, refill rate steady | Authorised and **queued** for the background scheduler, not started. It runs behind anything already queued. |
+| `quoted`, rate dropped >20% since the quote | **Re-quoted.** A new quote and a new token come back in the same response, and the old token is dead. This is a success, not an error: show the new numbers and ask again. |
+| `quoted`, rate now 0/min | Refused with an explanation. Your token stays valid, because the rate can recover. |
+| `draft` | Error: the manifest was never sealed. Finish staging it. |
+| `confirmed` | Error: already authorised, which is not the same as started. Use `check_job_status`. |
+| terminal | Error: already finished. Read its rows with `check_job_status` `action: 'fetch'`. |
+| wrong or expired token | Error: re-read the current quote with `check_job_status`, which reports the live token. |
+
+### Notes
+
+- **Nothing is charged at confirmation time.** Tokens are spent per batch as
+  the order executes, so a partially-run order costs exactly what it
+  consumed.
+- **Authorised is not started.** Confirming queues the order; the `started:`
+  line on `check_job_status` is what tells you a Keepa request has actually
+  been dispatched for it.
+- **This tool never runs the work inline.** An over-threshold order is by
+  definition an hour or more of refill, so confirmation hands it to the
+  background scheduler and returns immediately.
+- It confirms any kind of work order, so its response carries no rows at
+  all. Read the work with `check_job_status`.
+- A confirmed order can still be cancelled, and its settled rows stay
+  readable.
 
 ---
 
 ## `check_job_status`
 
-Check the status of a previously-queued Keepa background job, or list
-recent jobs. Used when a prior tool call returned a `jobId` because
-Keepa rate limits forced the work onto the background queue.
+The hub for work orders. Every id it accepts is a `wo_…` id: list them, poll
+one, cancel one, or page through the rows one has already settled. The tool
+name and the `jobId` input field are historical, kept because hosts have
+already learned them, and there is no legacy job queue behind them any more.
 
 ### What it's good for
 
-- A prior tool call returned a `jobId`: poll with `action='status'`
-  until completion, then re-call the original tool to fetch the result
-  at 0 tokens from cache.
-- Survey in-flight or recent jobs with `action='list'`.
-- Cancel a queued job that hasn't started yet with `action='cancel'`.
-- The user mentions a job without providing the ID: `list` first to
-  discover the jobId, then proceed.
+- A prior tool call returned an `orderId`: poll with `action='status'`
+  (passing it as `jobId`).
+- An order is running and you want the rows it has so far:
+  `action='fetch'`, mid-run or after it finishes.
+- Survey in-flight or recent work with `action='list'`.
+- Stop an order with `action='cancel'`.
+- The user mentions an order without providing the id: `list` first to
+  discover it, then proceed.
 
 ### Token cost
 
-**0 Keepa tokens.** Local read against the job queue state.
+**0 Keepa tokens.** Local read; never calls Keepa. Polling costs nothing and
+speeds nothing up.
 
 ### Actions
 
-- **`list`**: Show all recent jobs with IDs, kinds, and statuses. No
-  `jobId` required.
-- **`status`** (default): Report the current status of a specific job:
-  `pending`, `running`, `completed`, `cancelled`, or `failed`.
-- **`cancel`**: Abandon a **pending** job that has not started yet
-  (requires a `jobId`). A job already `running` is left to finish on its
-  own: cancel only applies before execution begins.
+- **`list`**: every recent order, newest first. No `jobId` required.
+- **`status`** (default): the progress report for one order, described
+  below.
+- **`fetch`**: page through the rows an order has already settled, rendered
+  the way the creating tool renders them: a screen order as the 13-column
+  pipe table, a lookup order as product blocks, a finder order as a one-line
+  match count plus its handle, a codes order as per-code candidate counts,
+  and a cross-border order as per-source match and gap lines under an
+  exchange-rate header. `offset` (default 0) and `limit` (default 100, max
+  500) page in the order the rows were requested.
+- **`cancel`**: stop an order. One that has **not started yet** cancels
+  instantly. A **running** one accepts the request and stops at its next
+  dispatch boundary (a Keepa request already in the air is paid for either
+  way), and everything it settled stays readable with `fetch`.
 
-### Status values
+### Work-order states
 
-- **`pending`**: Waiting for tokens or a free runner slot. The status
-  response reports the job's **position** in the queue, the **token
-  level it must reach** before it can start, and a **refill-based ETA**.
-- **`running`**: Job is currently executing.
-- **`completed`**: Finished successfully.
-- **`cancelled`**: Abandoned via `action='cancel'` before it started.
-  Reported distinctly from `failed`, a cancellation is not an error.
-- **`failed`**: Encountered an error. Status response carries the error
-  message.
+- **`draft`**: still being staged, so not priced and not started.
+- **`quoted`**: priced and waiting on consent. Nothing charged. The status
+  response carries the live `confirmToken` for `confirm_work_order`.
+- **`confirmed`**: authorised, which is not the same as started. It is
+  queued for the background scheduler and may sit behind other authorised
+  orders before its first Keepa request.
+- **`completed`**: every row settled.
+- **`partial`**: stopped with rows unfetched (a spend ceiling, a deadline,
+  an exhausted retry budget, or repeated upstream refusals) with everything
+  it did settle intact. Read them with `fetch`.
+- **`failed`**: stopped before settling anything.
+- **`cancelled`**: stopped on request, keeping its settled rows the same way
+  a `partial` order does.
 
-### What it returns
+### What `status` reports
 
-- **`list`**: Count of recent jobs plus one line per job: `jobId`,
-  kind, status, attempt count, creation timestamp. A cancelled job is
-  labelled cancelled, not failed.
-- **`status`**: Status message. A `pending` reply includes the queue
-  position, the token level the job is waiting for, and a refill-based
-  ETA. **On `completed`, the message appends provenance guidance
-  pointing at the retrieval tool + id needed to fetch the result at 0
-  tokens.** The raw job payload is not echoed inline: treat the
-  guidance as a fetch instruction. The retrieval hand-off looks like a
-  `[handle:]` / `[partial:]` finder bracket for finder jobs (same
-  convention as sync finder output), a `resultSetId` hand-off for
-  lookup / screen jobs, or a `crossBorderResultId` hand-off for
-  cross-border jobs: re-call the named tool with the named id to pull
-  the actual result.
-- **`cancel`**: Confirms the pending job was cancelled, or explains why
-  it could not be (already running, already finished, or unknown id).
+- **Progress**: rows settled vs total, with the not-found / unreadable
+  split.
+- **Tokens**: what Keepa itself billed, separated from what is reserved for
+  requests still in flight. That reserve releases when they settle, so the
+  charged total is a high-water mark mid-run.
+- **The original quote**, cost only, with no time claim attached, plus a
+  **`DRIFT`** note when re-pricing the remaining work now needs more refill
+  than the whole order was quoted at (cached entries expire, refill rates
+  move). The quote is never silently rewritten, and a declared
+  `maxTokenSpend` still binds hard.
+- **`authorised:` and `started:`**, which are different events. The first is
+  when the user agreed to the spend; the second says only whether a Keepa
+  request has actually been dispatched. An order still queued reports
+  `not yet started — N orders ahead (~X tokens)`.
+- **A `Queue:`/`ETA:` pair** while rows are still outstanding: how many
+  orders are ahead with their remaining cost, then a bound on the wait.
+  See [Cost and time are two separate claims](#cost-and-time-are-two-separate-claims)
+  for the three conditions that ride with it.
+- **A hand-off** naming the id to read the results with:
+  `screen:<orderId>`, `lookup:<orderId>`, `finder:<orderId>`,
+  `codes:<orderId>`, or `xb_<suffix>` for cross-border.
+
+**The ETA is withheld** for four kinds of order, because none of them
+finishes on refill alone and a completion time would contradict the message
+it sits in: a `draft`, one that has been asked to cancel, one that is
+unschedulable, and one whose deadline has passed. For an order still
+awaiting consent, the pair is kept but framed "If you confirm now:" and
+counts every authorised order ahead of it.
 
 ### Notes
 
-- Jobs are created automatically when an enqueuing tool
-  (`execute_keepa_finder`, `screen_products`, `get_product_details`,
-  `resolve_cross_border`) hits a Keepa rate-limit wait.
-- Jobs expire after **24 hours**.
-- Resubmitting an **identical** request while a matching job is still
-  `pending` or `running` reuses that job instead of creating a duplicate
-  that would double-spend tokens.
-- If token replenishment is required for a `pending` job, the status
-  surfaces its queue position, the token level it's waiting for, and a
-  refill-based ETA, and the assistant offers refinement options (smaller
-  subset, tighter filters, save for later).
+- Work orders are created automatically by `screen_products`,
+  `get_product_details`, `execute_keepa_finder`, `resolve_cross_border` and
+  `resolve_codes` on every call they accept. A short balance comes back as
+  an `orderId`, not an error.
+- **Finished orders are kept for 14 days**, and a result-set view whose own
+  24-hour TTL lapsed is rebuilt on demand at 0 tokens. Unsealed drafts are
+  discarded after 24 hours.
+- Do not re-issue the original call to "retry" a background order: that
+  creates a second order for the same work and pays for it twice.
+- An order waiting on refill holds no tokens at all, and one still awaiting
+  consent has been charged nothing.
 
 ---
 
@@ -912,6 +1209,8 @@ page through the full set without re-running the finder query.
 
 - After `execute_keepa_finder` returns a complete result set, retrieve
   the ASINs.
+- After `check_job_status` reports a background finder order finished and
+  names its `finder:<orderId>` handle. Same id, same read.
 - Page through a large result set, or take a top-N slice. The slice can
   be passed to whichever downstream tool the user has chosen.
 - The user asks for "next page" of results from a previous finder
@@ -923,7 +1222,8 @@ page through the full set without re-running the finder query.
 
 ### Inputs
 
-- **`resultSetId`**: id from a prior `execute_keepa_finder` call.
+- **`resultSetId`**: the `finder:<orderId>` id from a prior
+  `execute_keepa_finder` call or a `check_job_status` hand-off.
 - **`offset`**: defaults to 0. The starting index into the stored set.
 - **`limit`**: defaults to 100. Number of ASINs to return.
 
@@ -940,8 +1240,11 @@ A single human-readable text block:
 
 ### Notes
 
-- **Result sets expire after 24 hours.** On "not found or expired",
-  re-run `execute_keepa_finder` for a fresh id.
+- **Result sets expire after 24 hours, but the view is derived, not the
+  record.** On "not found or expired", poll the order the id names with
+  `check_job_status`: a retained order (14 days) rebuilds its view for free.
+  Re-running `execute_keepa_finder` is the fallback once the order itself is
+  gone, and it pays for the search a second time.
 - **Pagination bounds.** If `offset >= totalResults`, the tool returns
   the header + `ASINs: <none in range>`, success with empty range, not
   an error.
@@ -965,20 +1268,21 @@ emits the id).
 - After `resolve_cross_border` has run and its inline output has been
   compacted out of the conversation, use `get` with the `xb_` id to
   recover the full result.
-- After an async `resolve_cross_border` background job completes, the
-  completion message includes the `xb_` id.
+- After a background `resolve_cross_border` work order has settled
+  anything: `check_job_status` hands back the `xb_` id, and it stays
+  readable here for the rest of the order's life and after it completes.
 - Redisplay or re-analyze a previous run: use `list` to discover
   available ids, then `get` to fetch.
 
 ### Token cost
 
-**0 Keepa tokens.** Local SQLite lookup; no Keepa API calls.
+**0 Keepa tokens.** Local store lookup; no Keepa API calls.
 
 ### Actions
 
-- **`get`** (default): looks up a specific `xb_` result from local
-  SQLite and returns the full cross-border analysis.
-- **`list`**: scans local SQLite for all cross-border analyses stored
+- **`get`** (default): looks up a specific `xb_` result in the local store
+  and returns the full cross-border analysis.
+- **`list`**: scans the local store for all cross-border analyses held
   under this install's Keepa key hash. No id required.
 
 ### What it returns
@@ -988,11 +1292,30 @@ stored `CrossBorderResult`. The text is `JSON.stringify(result)`; parse
 for field access. The parsed object contains:
 
 - `summary`: counts (matched / unmatched), avg gap %, source and
-  target domain labels, exchange rate and date.
+  target domain labels, exchange rate and date, the run's actual
+  `tokensUsed`, plus `pendingCount` and `orderEnded` when relevant (below).
 - `matches`: array of source↔target ASIN pairs with prices (local
   cents), converted target price, gap %, and confidence level.
 - `unmatched`: source ASINs that could not be resolved, with reason
   codes.
+
+### Reading an incomplete result
+
+The `xb_` blob is rewritten after every batch settles, so an id can be read
+before its order is done. What comes back then is a real but **incomplete**
+comparison, and two fields keep you from misreading it:
+
+- `summary.pendingCount` counts source ASINs that are **not resolved**.
+  Those have not been looked at, so reporting "1 of 5 matched" as though the
+  other four found no arbitrage is exactly the misread these fields prevent.
+- `summary.orderEnded` is `true` only once the order has reached a terminal
+  state, which makes its pending rows final.
+
+| | `orderEnded` absent | `orderEnded: true` |
+|---|---|---|
+| What it means | still filling in | ended short, those rows were never resolved |
+| `action='list'` label | `— STILL RUNNING, N of M not resolved yet` | `— ENDED INCOMPLETE, N of M never resolved` |
+| What to do | poll `check_job_status`, re-read here | stop polling; re-run those sources if you still want them |
 
 **`action='list'`**: a human-readable text block, newest first. Header
 line counts cached analyses; one line per analysis carries id, source →
@@ -1027,13 +1350,20 @@ exactly the rows you need instead of receiving the whole table.
 - After `resolve_codes`, pull the rows that need disambiguation
   (`multiCandidateOnly: true`, the canonical move; single-candidate rows
   are already resolved).
+- After a background `resolve_codes` work order has settled anything:
+  `check_job_status` hands back the `codes:` id, and it stays readable here
+  for the rest of the order's life and after it completes.
 - Fetch specific rows by supplier code, or page through the full set.
 - Discover cached resolutions (`action: 'list'`).
 
 ### Token cost
 
-**0 Keepa tokens.** Local cache read. Resolutions expire after 24 h: 
-re-run `resolve_codes` to regenerate.
+**0 Keepa tokens.** Local cache read. The stored view expires after 24 h,
+but the work order behind it does not, so an expired id is usually
+recoverable for free: poll `check_job_status` on the order (its id is the
+`codes:` id minus the prefix) and the view is rebuilt from the order's own
+record at 0 tokens. Re-run `resolve_codes` only once the order itself has
+aged out, since that pays for the whole resolution again.
 
 ### Actions
 
