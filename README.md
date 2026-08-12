@@ -115,7 +115,7 @@ unzip tool recognises the extension.
 
 ## Release status
 
-This is the **v2.0.0 early-access release**, distributed to invited
+This is the **v2.0.1 early-access release**, distributed to invited
 testers on a free, revocable license. Today's artifacts are unsigned
 builds; the trust stack (Sigstore / cosign supply-chain attestation,
 signed checksums, and an SBOM) is on the roadmap. Until then, install

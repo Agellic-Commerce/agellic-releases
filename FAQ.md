@@ -170,7 +170,7 @@ When shipping is greater than zero, `pricing.buyBox.itemCents` and
 
 ### What does "early-access" mean here?
 
-v2.0.0 is the current stable release, but distribution is still early-access:
+v2.0.1 is the current stable release, but distribution is still early-access:
 unsigned build artifacts delivered via the
 `Agellic-Commerce/agellic-releases` GitHub repo to invited testers,
 with no supply-chain attestation yet, no automatic updates, and no
@@ -187,9 +187,9 @@ public signup. Issues are triaged manually by the agellic team via
 No dates promised: these are the gates we're working through, not
 a schedule.
 
-### Do I need a new license for v2.0.0?
+### Do I need a new license for v2.0.1?
 
-No. If you already have a v1.0.0 license token, it works as-is on v2.0.0:
+No. If you already have a v1.0.0 license token, it works as-is on v2.0.1:
 same signing key, same coverage window. The major-version bump is about the
 tool surface, not licensing. (Only the beta → v1.0.0 graduation
 required a one-time reissue, because v1.0.0 rotated the signing key and
